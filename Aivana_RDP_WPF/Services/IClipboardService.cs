@@ -1,3 +1,5 @@
+using Aivana_RDP_WPF.Models;
+
 namespace Aivana_RDP_WPF.Services;
 
 /// <summary>
@@ -5,6 +7,11 @@ namespace Aivana_RDP_WPF.Services;
 /// </summary>
 public interface IClipboardService
 {
-    // Will be implemented in Story 7.1
+    Task SyncClipboardToRemoteAsync(int connectionProfileId, CancellationToken ct = default);
+    Task SyncClipboardFromRemoteAsync(int connectionProfileId, CancellationToken ct = default);
+    Task<List<ClipboardItem>> GetClipboardHistoryAsync(int connectionProfileId, CancellationToken ct = default);
+    Task SetClipboardEnabledAsync(int connectionProfileId, bool enabled, CancellationToken ct = default);
+    bool IsClipboardEnabled(int connectionProfileId);
+    event EventHandler<ClipboardItem>? ClipboardChanged;
 }
 

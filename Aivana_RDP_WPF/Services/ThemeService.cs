@@ -1,4 +1,5 @@
 using System.Windows;
+using WpfApplication = System.Windows.Application;
 using Microsoft.Extensions.Logging;
 
 namespace Aivana_RDP_WPF.Services;
@@ -29,7 +30,7 @@ public class ThemeService : IThemeService
         {
             _logger.LogInformation("Switching theme from {OldTheme} to {NewTheme}", _currentTheme, themeName);
             
-            var app = Application.Current;
+            var app = WpfApplication.Current;
             if (app == null) return;
 
             // Remove existing theme resources

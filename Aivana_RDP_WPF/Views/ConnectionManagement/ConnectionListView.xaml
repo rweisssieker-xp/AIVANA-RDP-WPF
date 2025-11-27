@@ -10,6 +10,9 @@
              d:DesignHeight="600" d:DesignWidth="800">
     <UserControl.Resources>
         <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter"/>
+        <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+        <converters:TagsConverter x:Key="TagsConverter"/>
     </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
@@ -19,17 +22,66 @@
 
         <!-- Toolbar -->
         <Border Grid.Row="0" Background="#F3F3F3" Padding="12" BorderBrush="#E1E1E1" BorderThickness="0,0,0,1">
-            <StackPanel Orientation="Horizontal">
-                <Button Content="New Connection" Padding="12,6" Margin="0,0,8,0" 
-                        Command="{Binding CreateConnectionCommand}"/>
-                <Button Content="Refresh" Padding="12,6" Margin="0,0,8,0"
-                        Command="{Binding LoadConnectionsCommand}"/>
-            </StackPanel>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <Button Content="New Connection" Padding="12,6" Margin="0,0,8,0" 
+                            Command="{Binding CreateConnectionCommand}"/>
+                    <Button Content="Import" Padding="12,6" Margin="0,0,8,0"
+                            Command="{Binding ImportConnectionsCommand}"/>
+                    <Button Content="Export" Padding="12,6" Margin="0,0,8,0"
+                            Command="{Binding ExportConnectionsCommand}"/>
+                    <Button Content="⭐ Favorites" Padding="12,6" Margin="0,0,8,0"
+                            Command="{Binding ToggleFavoritesFilterCommand}"
+                            Background="{Binding ShowFavoritesOnly, Converter={StaticResource InverseBooleanConverter}, ConverterParameter=Background}"/>
+                    <Button Content="Clear Filters" Padding="12,6" Margin="0,0,8,0"
+                            Command="{Binding ClearFiltersCommand}"/>
+                    <Button Content="Refresh" Padding="12,6"
+                            Command="{Binding LoadConnectionsCommand}"/>
+                </StackPanel>
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <ComboBox ItemsSource="{Binding AvailableGroups}" SelectedItem="{Binding SelectedGroup}"
+                             Width="150" Margin="0,0,8,0" Padding="8,4"
+                             SelectionChanged="GroupComboBox_SelectionChanged">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <ComboBox ItemsSource="{Binding AvailableTags}" SelectedItem="{Binding SelectedTag}"
+                             Width="150" Margin="0,0,8,0" Padding="8,4"
+                             SelectionChanged="TagComboBox_SelectionChanged">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" 
+                            Width="200" Padding="8,4"
+                            VerticalContentAlignment="Center">
+                        <TextBox.Style>
+                            <Style TargetType="TextBox">
+                                <Setter Property="Background" Value="White"/>
+                                <Style.Triggers>
+                                    <Trigger Property="Text" Value="">
+                                        <Setter Property="Background" Value="#F0F0F0"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBox.Style>
+                    </TextBox>
+                </StackPanel>
+            </Grid>
         </Border>
 
         <!-- Connection List -->
         <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-            <ItemsControl ItemsSource="{Binding Connections}" Margin="12">
+            <ItemsControl ItemsSource="{Binding FilteredConnections}" Margin="12">
                 <ItemsControl.ItemTemplate>
                     <DataTemplate>
                         <Border Background="White" Margin="0,4" Padding="12" 
@@ -41,9 +93,38 @@
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0">
-                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14"/>
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"/>
+                                        <Button Content="⭐" FontSize="12" Padding="4,0" Margin="8,0,0,0" 
+                                                Background="Transparent" BorderThickness="0"
+                                                Foreground="{Binding IsFavorite, Converter={StaticResource InverseBooleanConverter}, ConverterParameter=Foreground}"
+                                                Command="{Binding DataContext.ToggleFavoriteCommand, RelativeSource={RelativeSource AncestorType=UserControl}}"
+                                                CommandParameter="{Binding}"
+                                                Visibility="{Binding IsFavorite, Converter={StaticResource InverseBooleanConverter}, ConverterParameter=Visibility}"/>
+                                        <TextBlock Text="⭐" FontSize="14" Margin="8,0,0,0" Foreground="#FFB900"
+                                                  Visibility="{Binding IsFavorite, Converter={StaticResource NullToVisibilityConverter}}"/>
+                                    </StackPanel>
                                     <TextBlock Text="{Binding ServerAddress}" Foreground="#6B6B6B" FontSize="12" Margin="0,4,0,0"/>
                                     <TextBlock Text="{Binding Port, StringFormat='Port: {0}'}" Foreground="#6B6B6B" FontSize="11" Margin="0,2,0,0"/>
+                                    <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                        <TextBlock Text="{Binding GroupName}" Foreground="#0078D4" FontSize="10" 
+                                                  Visibility="{Binding GroupName, Converter={StaticResource NullToVisibilityConverter}}"
+                                                  Margin="0,0,8,0"/>
+                                        <ItemsControl ItemsSource="{Binding Tags, Converter={StaticResource TagsConverter}}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Orientation="Horizontal"/>
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="#E1E1E1" Padding="4,2" Margin="2,0" CornerRadius="2">
+                                                        <TextBlock Text="{Binding}" FontSize="9" Foreground="#333"/>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal">
                                     <Button Content="Edit" Margin="4,0" Padding="8,4" 
@@ -64,7 +145,7 @@
         <TextBlock Grid.Row="1" Text="No connections found. Click 'New Connection' to create one." 
                    HorizontalAlignment="Center" VerticalAlignment="Center"
                    Foreground="#6B6B6B" FontSize="14"
-                   Visibility="{Binding Connections.Count, Converter={StaticResource CountToVisibilityConverter}, ConverterParameter=0}"/>
+                   Visibility="{Binding FilteredConnections.Count, Converter={StaticResource CountToVisibilityConverter}, ConverterParameter=0}"/>
     </Grid>
 </UserControl>
 

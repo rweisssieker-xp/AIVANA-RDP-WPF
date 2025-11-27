@@ -136,12 +136,21 @@ public partial class App : WpfApplication
         services.AddSingleton<IPerformanceMonitorService, PerformanceMonitorService>();
         services.AddSingleton<ICredentialService, CredentialService>();
         services.AddSingleton<IThemeService, ThemeService>();
+        services.AddSingleton<IImportExportService, ImportExportService>();
         services.AddSingleton<INotificationService, NotificationService>();
 
         // Register ViewModels
         services.AddTransient<ViewModels.ConnectionManagement.ConnectionListViewModel>();
         services.AddTransient<ViewModels.ConnectionManagement.ConnectionConfigViewModel>();
-        services.AddTransient<ViewModels.ConnectionManagement.ConnectionSessionViewModel>();
+        services.AddTransient<ViewModels.ConnectionManagement.ConnectionSessionViewModel>(sp =>
+        {
+            var rdpService = sp.GetRequiredService<IRdpConnectionService>();
+            var logger = sp.GetRequiredService<ILogger<ViewModels.ConnectionManagement.ConnectionSessionViewModel>>();
+            var credentialService = sp.GetService<ICredentialService>();
+            var performanceMonitorService = sp.GetService<IPerformanceMonitorService>();
+            return new ViewModels.ConnectionManagement.ConnectionSessionViewModel(rdpService, logger, credentialService, performanceMonitorService);
+        });
+        services.AddTransient<ViewModels.ConnectionManagement.ConnectionHealthViewModel>();
         services.AddTransient<ViewModels.SettingsViewModel>();
         
         // MainViewModel needs IServiceProvider, so register after building

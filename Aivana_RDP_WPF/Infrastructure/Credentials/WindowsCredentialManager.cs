@@ -29,8 +29,8 @@ public class WindowsCredentialManager
                 Persist = NativeMethods.CREDENTIAL_PERSIST.LOCAL_MACHINE,
                 AttributeCount = 0,
                 Attributes = IntPtr.Zero,
-                TargetAlias = null,
-                Comment = null
+                TargetAlias = string.Empty,
+                Comment = string.Empty
             };
 
             var result = NativeMethods.CredWrite(ref credential, 0);

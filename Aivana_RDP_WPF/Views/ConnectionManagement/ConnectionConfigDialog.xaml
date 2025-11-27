@@ -51,10 +51,15 @@
                             <TextBlock Text="Username" Margin="0,0,0,4"/>
                             <TextBox Text="{Binding Username}" Height="32"/>
                         </StackPanel>
+                        <StackPanel Margin="0,0,0,12">
+                            <TextBlock Text="Password" Margin="0,0,0,4"/>
+                            <PasswordBox x:Name="PasswordBox" Height="32" PasswordChanged="PasswordBox_PasswordChanged"/>
+                        </StackPanel>
                         <StackPanel>
                             <TextBlock Text="Domain (optional)" Margin="0,0,0,4"/>
                             <TextBox Text="{Binding Domain}" Height="32"/>
                         </StackPanel>
+                        <CheckBox Content="Save password" Margin="0,12,0,0" IsChecked="{Binding SavePassword}"/>
                     </StackPanel>
                 </GroupBox>
 

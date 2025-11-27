@@ -22,6 +22,9 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private ConnectionSessionViewModel? _activeSession;
 
+    [ObservableProperty]
+    private bool _useMultiSessionMode;
+
     public ConnectionListViewModel ConnectionListViewModel => _connectionListViewModel;
 
     public MainViewModel(

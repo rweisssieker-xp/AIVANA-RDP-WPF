@@ -1,8 +1,10 @@
 using System.Windows;
 using System.Windows.Controls;
 using WpfUserControl = System.Windows.Controls.UserControl;
+using WpfComboBox = System.Windows.Controls.ComboBox;
 using WpfApplication = System.Windows.Application;
 using Aivana_RDP_WPF.ViewModels.ConnectionManagement;
+using Aivana_RDP_WPF.Services;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Aivana_RDP_WPF.Views.ConnectionManagement;
@@ -54,6 +56,17 @@ public partial class ConnectionListView : WpfUserControl
         if (serviceProvider == null) return;
 
         var configViewModel = serviceProvider.GetRequiredService<ConnectionConfigViewModel>();
+        var credentialService = serviceProvider.GetRequiredService<ICredentialService>();
+        
+        // Inject credential service into view model using reflection
+        var credentialServiceField = typeof(ConnectionConfigViewModel).GetField("_credentialService", 
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        credentialServiceField?.SetValue(configViewModel, credentialService);
+        
+        var logger = serviceProvider.GetRequiredService<Microsoft.Extensions.Logging.ILogger<Infrastructure.Credentials.WindowsCredentialManager>>();
+        var credentialManagerLoggerField = typeof(ConnectionConfigViewModel).GetField("_credentialManagerLogger", 
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+        credentialManagerLoggerField?.SetValue(configViewModel, logger);
         
         if (profile != null)
         {
@@ -81,6 +94,22 @@ public partial class ConnectionListView : WpfUserControl
         }
 
         vm.IsDialogOpen = false;
+    }
+
+    private void GroupComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is ConnectionListViewModel vm && sender is WpfComboBox comboBox)
+        {
+            vm.FilterByGroupCommand.Execute(comboBox.SelectedItem as string);
+        }
+    }
+
+    private void TagComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is ConnectionListViewModel vm && sender is WpfComboBox comboBox)
+        {
+            vm.FilterByTagCommand.Execute(comboBox.SelectedItem as string);
+        }
     }
 }
 

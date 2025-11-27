@@ -84,6 +84,12 @@ public class RdpClientWrapper : IDisposable
             {
                 _rdpClient.Domain = domain;
             }
+            
+            // Set password if provided
+            if (!string.IsNullOrEmpty(password))
+            {
+                _rdpClient.AdvancedSettings9.ClearTextPassword = password;
+            }
 
             // Set advanced settings
             _rdpClient.AdvancedSettings9.Compress = 1; // Enable compression

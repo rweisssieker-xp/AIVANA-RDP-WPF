@@ -1,4 +1,5 @@
 using System.Windows;
+using System.Windows.Controls;
 using WpfMessageBox = System.Windows.MessageBox;
 using Aivana_RDP_WPF.ViewModels.ConnectionManagement;
 
@@ -26,12 +27,28 @@ public partial class ConnectionConfigDialog : Window
         }
     }
 
-    private void SaveButton_Click(object sender, RoutedEventArgs e)
+    private void PasswordBox_PasswordChanged(object sender, RoutedEventArgs e)
+    {
+        if (sender is PasswordBox passwordBox)
+        {
+            _viewModel.Password = passwordBox.Password;
+        }
+    }
+
+    private async void SaveButton_Click(object sender, RoutedEventArgs e)
     {
         if (_viewModel.Validate())
         {
-            DialogResult = true;
-            Close();
+            try
+            {
+                await _viewModel.SaveCommand.ExecuteAsync(null);
+                DialogResult = true;
+                Close();
+            }
+            catch (Exception ex)
+            {
+                WpfMessageBox.Show($"Error saving connection: {ex.Message}", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
         }
         else
         {

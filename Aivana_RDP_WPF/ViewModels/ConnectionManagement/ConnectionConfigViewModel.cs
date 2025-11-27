@@ -42,11 +42,21 @@ public partial class ConnectionConfigViewModel : ObservableObject
     [ObservableProperty]
     private int? _editingProfileId;
 
+    [ObservableProperty]
+    private bool _savePassword;
+
+    [ObservableProperty]
+    private string? _password;
+
+    private readonly ICredentialService? _credentialService;
+
     public ConnectionConfigViewModel(
         IConnectionProfileService connectionProfileService,
-        ILogger<ConnectionConfigViewModel> logger)
+        ILogger<ConnectionConfigViewModel> logger,
+        ICredentialService? credentialService = null)
     {
         _connectionProfileService = connectionProfileService;
+        _credentialService = credentialService;
         _logger = logger;
     }
 
@@ -85,6 +95,17 @@ public partial class ConnectionConfigViewModel : ObservableObject
                     
                     await _connectionProfileService.UpdateProfileAsync(profile);
                     _logger.LogInformation("Updated connection profile {ProfileId}", profile.Id);
+                    
+                    // Update credentials if password provided and SavePassword is checked
+                    if (SavePassword && !string.IsNullOrEmpty(Password) && _credentialService != null)
+                    {
+                        await _credentialService.SaveCredentialsAsync(profile.Id, Username ?? "", Password ?? "");
+                    }
+                    else if (!SavePassword && _credentialService != null)
+                    {
+                        // Delete credentials if SavePassword is unchecked
+                        await _credentialService.DeleteCredentialsAsync(profile.Id);
+                    }
                 }
             }
             else
@@ -99,8 +120,14 @@ public partial class ConnectionConfigViewModel : ObservableObject
                     Settings = "{}"
                 };
                 
-                await _connectionProfileService.CreateProfileAsync(profile);
-                _logger.LogInformation("Created connection profile {ProfileId}", profile.Id);
+                var createdProfile = await _connectionProfileService.CreateProfileAsync(profile);
+                _logger.LogInformation("Created connection profile {ProfileId}", createdProfile.Id);
+                
+                // Save credentials if password provided and SavePassword is checked
+                if (SavePassword && !string.IsNullOrEmpty(Password) && _credentialService != null)
+                {
+                    await _credentialService.SaveCredentialsAsync(createdProfile.Id, Username ?? "", Password ?? "");
+                }
             }
         }
         catch (Exception ex)

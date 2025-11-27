@@ -12,6 +12,8 @@ namespace Aivana_RDP_WPF.ViewModels.ConnectionManagement;
 public partial class ConnectionSessionViewModel : ObservableObject
 {
     private readonly IRdpConnectionService _rdpConnectionService;
+    private readonly ICredentialService? _credentialService;
+    private readonly IPerformanceMonitorService? _performanceMonitorService;
     private readonly ILogger<ConnectionSessionViewModel> _logger;
     private ConnectionProfile? _profile;
 
@@ -29,11 +31,24 @@ public partial class ConnectionSessionViewModel : ObservableObject
 
     public ConnectionProfile? Profile => _profile;
 
+    [ObservableProperty]
+    private bool _showHealthMetrics;
+
+    [ObservableProperty]
+    private ConnectionHealthViewModel? _healthViewModel;
+
+    [ObservableProperty]
+    private bool _isSelected;
+
     public ConnectionSessionViewModel(
         IRdpConnectionService rdpConnectionService,
-        ILogger<ConnectionSessionViewModel> logger)
+        ILogger<ConnectionSessionViewModel> logger,
+        ICredentialService? credentialService = null,
+        IPerformanceMonitorService? performanceMonitorService = null)
     {
         _rdpConnectionService = rdpConnectionService;
+        _credentialService = credentialService;
+        _performanceMonitorService = performanceMonitorService;
         _logger = logger;
     }
 
@@ -41,7 +56,22 @@ public partial class ConnectionSessionViewModel : ObservableObject
     {
         _profile = profile;
         OnPropertyChanged(nameof(Profile));
-        StatusMessage = $"Ready to connect to {profile.ServerAddress}";
+        StatusMessage = $"Ready to connect to {profile.Name} ({profile.ServerAddress})";
+        
+        // Initialize health view model
+        if (_performanceMonitorService != null)
+        {
+            var loggerFactory = Microsoft.Extensions.Logging.LoggerFactory.Create(builder => builder.AddConsole());
+            HealthViewModel = new ConnectionHealthViewModel(_performanceMonitorService, 
+                loggerFactory.CreateLogger<ConnectionHealthViewModel>());
+            HealthViewModel.LoadMetrics(profile.Id);
+        }
+    }
+
+    [RelayCommand]
+    private void ToggleHealthMetrics()
+    {
+        ShowHealthMetrics = !ShowHealthMetrics;
     }
 
     [RelayCommand]
@@ -70,10 +100,24 @@ public partial class ConnectionSessionViewModel : ObservableObject
                 OnPropertyChanged(nameof(RdpHost));
             }
             
-            // Connect
-            await _rdpConnectionService.ConnectAsync(_profile);
-            IsConnected = true;
-            StatusMessage = "Connected";
+            // Get credentials if available
+            string? password = null;
+            if (_credentialService != null && _profile.Id > 0)
+            {
+                var credentials = await _credentialService.GetCredentialsAsync(_profile.Id);
+                password = credentials?.Password;
+            }
+            
+                // Connect
+                await _rdpConnectionService.ConnectAsync(_profile, password);
+                IsConnected = true;
+                StatusMessage = "Connected";
+                
+                // Start performance monitoring
+                if (_performanceMonitorService != null && _profile.Id > 0)
+                {
+                    await _performanceMonitorService.StartMonitoringAsync(_profile.Id);
+                }
         }
         catch (Exception ex)
         {
@@ -87,7 +131,7 @@ public partial class ConnectionSessionViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void Disconnect()
+    private async Task DisconnectAsync()
     {
         if (_profile == null || !IsConnected)
             return;
@@ -95,9 +139,17 @@ public partial class ConnectionSessionViewModel : ObservableObject
         try
         {
             _logger.LogInformation("Disconnecting from {Server}:{Port}", _profile.ServerAddress, _profile.Port);
+            
+            // Stop performance monitoring
+            if (_performanceMonitorService != null && _profile.Id > 0)
+            {
+                await _performanceMonitorService.StopMonitoringAsync(_profile.Id);
+            }
+            
             _rdpConnectionService.Disconnect(_profile.Id);
             IsConnected = false;
             StatusMessage = "Disconnected";
+            RdpHost = null; // Clear the host when disconnected
         }
         catch (Exception ex)
         {

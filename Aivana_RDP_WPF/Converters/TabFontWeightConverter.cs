@@ -5,23 +5,21 @@ using System.Windows.Data;
 namespace Aivana_RDP_WPF.Converters;
 
 /// <summary>
-/// Converts a count to visibility based on comparison value.
+/// Converts boolean to font weight for tab selection.
 /// </summary>
-public class CountToVisibilityConverter : IValueConverter
+public class TabFontWeightConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        if (value is int count)
+        if (value is bool isSelected)
         {
-            var compareValue = parameter != null ? int.Parse(parameter.ToString()!) : 0;
-            return count == compareValue ? Visibility.Visible : Visibility.Collapsed;
+            return isSelected ? FontWeights.SemiBold : FontWeights.Normal;
         }
-        return Visibility.Collapsed;
+        return FontWeights.Normal;
     }
 
     public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
     {
-        // One-way converter, no conversion back needed
         return DependencyProperty.UnsetValue;
     }
 }

@@ -15,5 +15,8 @@ public interface IConnectionProfileService
     Task<List<ConnectionProfile>> GetFavoritesAsync(CancellationToken ct = default);
     Task<List<ConnectionProfile>> GetByGroupAsync(string groupName, CancellationToken ct = default);
     Task<List<ConnectionProfile>> GetByTagAsync(string tag, CancellationToken ct = default);
+    Task ToggleFavoriteAsync(int profileId, CancellationToken ct = default);
+    Task<List<string>> GetAllGroupsAsync(CancellationToken ct = default);
+    Task<List<string>> GetAllTagsAsync(CancellationToken ct = default);
 }
 

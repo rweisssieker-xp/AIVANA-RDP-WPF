@@ -1,0 +1,134 @@
+<UserControl x:Class="Aivana_RDP_WPF.Views.ConnectionManagement.ConnectionHealthView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             mc:Ignorable="d"
+             d:DesignHeight="400" d:DesignWidth="600">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Connection Health Metrics" FontSize="20" FontWeight="Bold" Margin="0,0,0,16"/>
+
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <!-- Network Metrics -->
+            <GroupBox Grid.Row="0" Grid.Column="0" Header="Network" Padding="12" Margin="0,0,8,8">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <TextBlock Text="Latency:" Width="100"/>
+                        <TextBlock FontWeight="SemiBold">
+                            <TextBlock.Text>
+                                <MultiBinding StringFormat="{}{0:F0} ms">
+                                    <Binding Path="CurrentMetrics.LatencyMs"/>
+                                </MultiBinding>
+                            </TextBlock.Text>
+                        </TextBlock>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <TextBlock Text="Bandwidth:" Width="100"/>
+                        <TextBlock FontWeight="SemiBold">
+                            <TextBlock.Text>
+                                <MultiBinding StringFormat="{}{0:F1} Mbps">
+                                    <Binding Path="CurrentMetrics.BandwidthMbps"/>
+                                </MultiBinding>
+                            </TextBlock.Text>
+                        </TextBlock>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <TextBlock Text="Packet Loss:" Width="100"/>
+                        <TextBlock FontWeight="SemiBold">
+                            <TextBlock.Text>
+                                <MultiBinding StringFormat="{}{0}%">
+                                    <Binding Path="CurrentMetrics.PacketLossPercent"/>
+                                </MultiBinding>
+                            </TextBlock.Text>
+                        </TextBlock>
+                    </StackPanel>
+                </StackPanel>
+            </GroupBox>
+
+            <!-- Quality Metrics -->
+            <GroupBox Grid.Row="0" Grid.Column="1" Header="Quality" Padding="12" Margin="8,0,0,8">
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <TextBlock Text="Frame Rate:" Width="100"/>
+                        <TextBlock FontWeight="SemiBold">
+                            <TextBlock.Text>
+                                <MultiBinding StringFormat="{}{0:F1} fps">
+                                    <Binding Path="CurrentMetrics.FrameRate"/>
+                                </MultiBinding>
+                            </TextBlock.Text>
+                        </TextBlock>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,4">
+                        <TextBlock Text="Quality Score:" Width="100"/>
+                        <TextBlock FontWeight="SemiBold">
+                            <TextBlock.Text>
+                                <MultiBinding StringFormat="{}{0}/100">
+                                    <Binding Path="CurrentMetrics.QualityScore"/>
+                                </MultiBinding>
+                            </TextBlock.Text>
+                        </TextBlock>
+                    </StackPanel>
+                </StackPanel>
+            </GroupBox>
+
+            <!-- Resource Usage -->
+            <GroupBox Grid.Row="1" Grid.Column="0" Grid.ColumnSpan="2" Header="Resource Usage" Padding="12" Margin="0,0,0,8">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0">
+                        <TextBlock Text="CPU Usage" Margin="0,0,0,4"/>
+                        <ProgressBar Value="{Binding CurrentMetrics.CpuUsagePercent}" Maximum="100" Height="20"/>
+                        <TextBlock HorizontalAlignment="Center" Margin="0,4,0,0">
+                            <TextBlock.Text>
+                                <MultiBinding StringFormat="{}{0:F1}%">
+                                    <Binding Path="CurrentMetrics.CpuUsagePercent"/>
+                                </MultiBinding>
+                            </TextBlock.Text>
+                        </TextBlock>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="16,0">
+                        <TextBlock Text="Memory Usage" Margin="0,0,0,4"/>
+                        <TextBlock FontWeight="SemiBold" HorizontalAlignment="Center">
+                            <TextBlock.Text>
+                                <MultiBinding StringFormat="{}{0:F1} MB">
+                                    <Binding Path="CurrentMetrics.MemoryUsageMB"/>
+                                </MultiBinding>
+                            </TextBlock.Text>
+                        </TextBlock>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="Network Usage" Margin="0,0,0,4"/>
+                        <TextBlock FontWeight="SemiBold" HorizontalAlignment="Center">
+                            <TextBlock.Text>
+                                <MultiBinding StringFormat="{}{0:F1} Mbps">
+                                    <Binding Path="CurrentMetrics.NetworkUsageMbps"/>
+                                </MultiBinding>
+                            </TextBlock.Text>
+                        </TextBlock>
+                    </StackPanel>
+                </Grid>
+            </GroupBox>
+        </Grid>
+    </Grid>
+</UserControl>
+

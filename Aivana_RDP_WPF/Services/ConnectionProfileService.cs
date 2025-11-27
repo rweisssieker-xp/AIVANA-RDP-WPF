@@ -99,5 +99,48 @@ public class ConnectionProfileService : IConnectionProfileService
             .OrderBy(p => p.Name)
             .ToListAsync(ct);
     }
+
+    public async Task ToggleFavoriteAsync(int profileId, CancellationToken ct = default)
+    {
+        _logger.LogInformation("Toggling favorite status for profile {ProfileId}", profileId);
+        var profile = await GetProfileByIdAsync(profileId, ct);
+        if (profile != null)
+        {
+            profile.IsFavorite = !profile.IsFavorite;
+            await UpdateProfileAsync(profile, ct);
+        }
+    }
+
+    public async Task<List<string>> GetAllGroupsAsync(CancellationToken ct = default)
+    {
+        _logger.LogInformation("Retrieving all group names");
+        return await _context.ConnectionProfiles
+            .Where(p => !string.IsNullOrEmpty(p.GroupName))
+            .Select(p => p.GroupName!)
+            .Distinct()
+            .OrderBy(g => g)
+            .ToListAsync(ct);
+    }
+
+    public async Task<List<string>> GetAllTagsAsync(CancellationToken ct = default)
+    {
+        _logger.LogInformation("Retrieving all tags");
+        var allTags = new HashSet<string>();
+        var profiles = await _context.ConnectionProfiles
+            .Where(p => !string.IsNullOrEmpty(p.Tags) && p.Tags != "[]")
+            .Select(p => p.Tags)
+            .ToListAsync(ct);
+
+        foreach (var tagsJson in profiles)
+        {
+            var tags = Helpers.TagHelper.ParseTags(tagsJson);
+            foreach (var tag in tags)
+            {
+                allTags.Add(tag);
+            }
+        }
+
+        return allTags.OrderBy(t => t).ToList();
+    }
 }
 

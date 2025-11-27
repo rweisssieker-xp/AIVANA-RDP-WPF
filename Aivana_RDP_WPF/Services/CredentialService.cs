@@ -11,10 +11,12 @@ public class CredentialService : ICredentialService
     private readonly ILogger<CredentialService> _logger;
     private readonly WindowsCredentialManager _credentialManager;
 
-    public CredentialService(ILogger<CredentialService> logger)
+    public CredentialService(
+        ILogger<CredentialService> logger,
+        ILogger<Infrastructure.Credentials.WindowsCredentialManager> credentialManagerLogger)
     {
         _logger = logger;
-        _credentialManager = new WindowsCredentialManager(logger);
+        _credentialManager = new WindowsCredentialManager(credentialManagerLogger);
     }
 
     public Task SaveCredentialsAsync(int connectionProfileId, string username, string password, CancellationToken ct = default)

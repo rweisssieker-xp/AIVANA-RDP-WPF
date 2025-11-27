@@ -5,10 +5,17 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:local="clr-namespace:Aivana_RDP_WPF.Views.ConnectionManagement"
              xmlns:wf="clr-namespace:System.Windows.Forms.Integration;assembly=WindowsFormsIntegration"
+             xmlns:converters="clr-namespace:Aivana_RDP_WPF.Converters"
+             xmlns:views="clr-namespace:Aivana_RDP_WPF.Views.ConnectionManagement"
              mc:Ignorable="d"
              d:DesignHeight="600" d:DesignWidth="800">
+    <UserControl.Resources>
+        <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+        <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>
+    </UserControl.Resources>
     <Grid>
         <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
@@ -30,15 +37,32 @@
                     <Button Content="Connect" Padding="12,6" Margin="0,0,8,0" 
                             Command="{Binding ConnectCommand}"
                             IsEnabled="{Binding IsConnecting, Converter={StaticResource InverseBooleanConverter}}"/>
-                    <Button Content="Disconnect" Padding="12,6"
+                    <Button Content="Disconnect" Padding="12,6" Margin="0,0,8,0"
                             Command="{Binding DisconnectCommand}"
                             IsEnabled="{Binding IsConnected}"/>
+                    <Button Content="Health Metrics" Padding="12,6"
+                            Command="{Binding ToggleHealthMetricsCommand}"/>
                 </StackPanel>
             </Grid>
         </Border>
 
+        <!-- Health Metrics Panel -->
+        <Border Grid.Row="1" Background="#F9F9F9" Padding="8" BorderBrush="#E1E1E1" BorderThickness="0,0,0,1">
+            <Border.Style>
+                <Style TargetType="Border">
+                    <Setter Property="Visibility" Value="Collapsed"/>
+                    <Style.Triggers>
+                        <DataTrigger Binding="{Binding ShowHealthMetrics}" Value="True">
+                            <Setter Property="Visibility" Value="Visible"/>
+                        </DataTrigger>
+                    </Style.Triggers>
+                </Style>
+            </Border.Style>
+            <views:ConnectionHealthView DataContext="{Binding HealthViewModel}"/>
+        </Border>
+
         <!-- RDP Host Container -->
-        <Grid Grid.Row="1" Background="Black">
+        <Grid Grid.Row="2" Background="Black">
             <ContentControl Content="{Binding RdpHost}">
                 <ContentControl.Resources>
                     <DataTemplate DataType="{x:Type wf:WindowsFormsHost}">
