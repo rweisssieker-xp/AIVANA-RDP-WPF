@@ -113,7 +113,7 @@ workflow_status:
         status: "required"
         agent: "architect"
         command: "implementation-readiness"
-        completion: ""
+        completion: "docs/implementation-readiness-report-2025-11-27.md"
         note: "Validates PRD + UX + Architecture + Epics + Testability cohesion before implementation"
 
   - phase: 3
@@ -124,6 +124,6 @@ workflow_status:
         status: "required"
         agent: "sm"
         command: "sprint-planning"
-        completion: ""
+        completion: "docs/sprint-artifacts/sprint-status.yaml"
         note: "Creates sprint plan - subsequent work tracked there"
 
