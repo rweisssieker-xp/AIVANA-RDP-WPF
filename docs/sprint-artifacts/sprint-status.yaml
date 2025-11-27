@@ -40,18 +40,18 @@ story_location: docs/sprint-artifacts
 
 development_status:
   # Epic 1: Foundation & Project Setup
-  epic-1: backlog
-  1-1-project-structure-core-dependencies: backlog
-  1-2-mvvm-infrastructure-dependency-injection: backlog
-  1-3-database-setup-entity-framework-core: backlog
-  1-4-core-services-infrastructure: backlog
-  1-5-logging-infrastructure: backlog
-  1-6-configuration-settings-infrastructure: backlog
+  epic-1: contexted
+  1-1-project-structure-core-dependencies: drafted
+  1-2-mvvm-infrastructure-dependency-injection: drafted
+  1-3-database-setup-entity-framework-core: drafted
+  1-4-core-services-infrastructure: drafted
+  1-5-logging-infrastructure: drafted
+  1-6-configuration-settings-infrastructure: drafted
   epic-1-retrospective: optional
 
   # Epic 2: Core Connection Management
-  epic-2: backlog
-  2-1-connection-profile-crud-operations: backlog
+  epic-2: contexted
+  2-1-connection-profile-crud-operations: drafted
   2-2-connection-groups-tags: backlog
   2-3-favorites-management: backlog
   2-4-connection-history-with-thumbnails: backlog
@@ -67,7 +67,7 @@ development_status:
   epic-2-retrospective: optional
 
   # Epic 3: Basic RDP Connection & Performance Monitoring
-  epic-3: backlog
+  epic-3: contexted
   3-1-rdp-connection-establishment: backlog
   3-2-multiple-simultaneous-connections: backlog
   3-3-connection-health-metrics-display: backlog
@@ -81,7 +81,7 @@ development_status:
   epic-3-retrospective: optional
 
   # Epic 4: Modern User Interface Foundation
-  epic-4: backlog
+  epic-4: contexted
   4-1-dark-mode-light-mode-themes: backlog
   4-2-multiple-built-in-themes: backlog
   4-3-responsive-layout-window-sizing: backlog
@@ -93,13 +93,13 @@ development_status:
   epic-4-retrospective: optional
 
   # Epic 5: Multi-Session Dashboard
-  epic-5: backlog
+  epic-5: contexted
   5-1-tabbed-multi-session-interface: backlog
   5-2-session-switching-management: backlog
   epic-5-retrospective: optional
 
   # Epic 6: File Transfer
-  epic-6: backlog
+  epic-6: contexted
   6-1-drag-and-drop-file-transfer: backlog
   6-2-multiple-file-transfer-with-progress: backlog
   6-3-pause-resume-file-transfers: backlog
@@ -109,7 +109,7 @@ development_status:
   epic-6-retrospective: optional
 
   # Epic 7: Clipboard Synchronization
-  epic-7: backlog
+  epic-7: contexted
   7-1-bidirectional-clipboard-synchronization: backlog
   7-2-clipboard-format-preservation: backlog
   7-3-clipboard-history: backlog
@@ -118,7 +118,7 @@ development_status:
   epic-7-retrospective: optional
 
   # Epic 8: Multi-Monitor Support
-  epic-8: backlog
+  epic-8: contexted
   8-1-multi-monitor-spanning: backlog
   8-2-monitor-selection: backlog
   8-3-per-monitor-resolution-configuration: backlog
@@ -127,7 +127,7 @@ development_status:
   epic-8-retrospective: optional
 
   # Epic 9: Session Recording
-  epic-9: backlog
+  epic-9: contexted
   9-1-session-recording-to-mp4: backlog
   9-2-recording-controls-start-pause-stop: backlog
   9-3-recording-quality-compression-settings: backlog
@@ -137,7 +137,7 @@ development_status:
   epic-9-retrospective: optional
 
   # Epic 10: Application Settings & Help
-  epic-10: backlog
+  epic-10: contexted
   10-1-application-wide-settings: backlog
   10-2-settings-reset-to-defaults: backlog
   10-3-settings-import-export: backlog
