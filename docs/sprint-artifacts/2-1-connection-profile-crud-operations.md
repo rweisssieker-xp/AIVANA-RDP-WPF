@@ -1,6 +1,6 @@
 # Story 2.1: Connection Profile CRUD Operations
 
-Status: drafted
+Status: done
 
 ## Story
 

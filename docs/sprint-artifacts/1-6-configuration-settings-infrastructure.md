@@ -1,6 +1,6 @@
 # Story 1.6: Configuration & Settings Infrastructure
 
-Status: drafted
+Status: done
 
 ## Story
 

@@ -1,6 +1,6 @@
 # Story 1.1: Project Structure & Core Dependencies
 
-Status: drafted
+Status: done
 
 ## Story
 
@@ -16,30 +16,30 @@ so that I can build the application foundation.
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Create WPF Project (AC: #1)
-  - [ ] Create new WPF project using `dotnet new wpf -n Aivana_RDP_WPF -f net8.0`
-  - [ ] Verify project builds successfully without errors
-  - [ ] Verify target framework is net8.0 in .csproj file
-- [ ] Task 2: Set Up Project Folder Structure (AC: #2)
-  - [ ] Create Views/ folder
-  - [ ] Create ViewModels/ folder
-  - [ ] Create Models/ folder
-  - [ ] Create Services/ folder
-  - [ ] Create Infrastructure/ folder
-  - [ ] Create Commands/ folder
-  - [ ] Create Converters/ folder
-  - [ ] Create Helpers/ folder
-  - [ ] Create Resources/ folder
-  - [ ] Create Tests/ folder
-  - [ ] Verify all folders exist per Architecture spec
-- [ ] Task 3: Install Core NuGet Packages (AC: #3)
-  - [ ] Install Microsoft.Extensions.DependencyInjection (8.0.0)
-  - [ ] Install Microsoft.Extensions.Logging (8.0.0)
-  - [ ] Install Microsoft.Extensions.Configuration (8.0.0)
-  - [ ] Install CommunityToolkit.Mvvm (8.2.2)
-  - [ ] Install Microsoft.EntityFrameworkCore.Sqlite (8.0.0)
-  - [ ] Verify packages installed via `dotnet list package`
-  - [ ] Verify project builds successfully after package installation
+- [x] Task 1: Create WPF Project (AC: #1)
+  - [x] Create new WPF project using `dotnet new wpf -n Aivana_RDP_WPF -f net8.0`
+  - [x] Verify project builds successfully without errors
+  - [x] Verify target framework is net8.0 in .csproj file
+- [x] Task 2: Set Up Project Folder Structure (AC: #2)
+  - [x] Create Views/ folder
+  - [x] Create ViewModels/ folder
+  - [x] Create Models/ folder
+  - [x] Create Services/ folder
+  - [x] Create Infrastructure/ folder
+  - [x] Create Commands/ folder
+  - [x] Create Converters/ folder
+  - [x] Create Helpers/ folder
+  - [x] Create Resources/ folder
+  - [x] Create Tests/ folder (already exists)
+  - [x] Verify all folders exist per Architecture spec
+- [x] Task 3: Install Core NuGet Packages (AC: #3)
+  - [x] Install Microsoft.Extensions.DependencyInjection (8.0.0)
+  - [x] Install Microsoft.Extensions.Logging (8.0.0)
+  - [x] Install Microsoft.Extensions.Configuration (8.0.0)
+  - [x] Install CommunityToolkit.Mvvm (8.2.2)
+  - [x] Install Microsoft.EntityFrameworkCore.Sqlite (8.0.0)
+  - [x] Verify packages installed via `dotnet list package`
+  - [x] Verify project builds successfully after package installation
 
 ## Dev Notes
 
@@ -87,5 +87,17 @@ so that I can build the application foundation.
 
 ### Completion Notes List
 
+**Completed:** 2025-11-27
+- WPF project created successfully with .NET 8.0 target framework
+- All required folders created: Views/, ViewModels/, Models/, Services/, Infrastructure/, Commands/, Converters/, Helpers/, Resources/
+- All core NuGet packages installed and verified
+- Project builds successfully without errors
+- Solution file created and both projects added
+
 ### File List
+
+- `Aivana_RDP_WPF/Aivana_RDP_WPF.csproj` - Main project file
+- `Aivana_RDP_WPF/App.xaml` - Application entry point
+- `Aivana_RDP_WPF/MainWindow.xaml` - Main window
+- `Aivana_RDP_WPF.sln` - Solution file
 

@@ -1,6 +1,6 @@
 # Story 1.5: Logging Infrastructure
 
-Status: drafted
+Status: done
 
 ## Story
 

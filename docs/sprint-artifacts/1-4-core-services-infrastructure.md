@@ -1,6 +1,6 @@
 # Story 1.4: Core Services Infrastructure
 
-Status: drafted
+Status: done
 
 ## Story
 
