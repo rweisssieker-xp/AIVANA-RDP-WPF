@@ -91,7 +91,7 @@ workflow_status:
         status: "required"
         agent: "pm"
         command: "create-epics-and-stories"
-        completion: ""
+        completion: "docs/epics.md"
         note: "Required: Break down PRD into implementable epics and stories with full context (PRD + UX + Architecture)"
       
       - id: "test-design"

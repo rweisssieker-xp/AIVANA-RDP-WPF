@@ -1,0 +1,33 @@
+[
+  {
+    "id": "00000000-0000-0000-0000-000000000001",
+    "name": "Test Server 1",
+    "serverAddress": "192.168.1.100",
+    "port": 3389,
+    "username": "testuser",
+    "domain": null,
+    "isFavorite": false,
+    "groupName": "Test Group",
+    "tags": ["test", "development"],
+    "settings": "{}",
+    "createdAt": "2025-01-01T00:00:00Z",
+    "lastConnectedAt": null,
+    "connectionCount": 0
+  },
+  {
+    "id": "00000000-0000-0000-0000-000000000002",
+    "name": "Test Server 2",
+    "serverAddress": "192.168.1.101",
+    "port": 3389,
+    "username": "testuser2",
+    "domain": "TESTDOMAIN",
+    "isFavorite": true,
+    "groupName": "Production",
+    "tags": ["production", "critical"],
+    "settings": "{\"resolution\":\"1920x1080\",\"colorDepth\":32}",
+    "createdAt": "2025-01-01T00:00:00Z",
+    "lastConnectedAt": "2025-01-02T10:30:00Z",
+    "connectionCount": 5
+  }
+]
+
