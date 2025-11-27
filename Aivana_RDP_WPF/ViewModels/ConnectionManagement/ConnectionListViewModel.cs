@@ -39,7 +39,8 @@ public partial class ConnectionListViewModel : ObservableObject
         try
         {
             _logger.LogInformation("Loading connection profiles");
-            Connections = await _connectionProfileService.GetAllProfilesAsync();
+            var profiles = await _connectionProfileService.GetAllProfilesAsync();
+            Connections = profiles.ToList();
             _logger.LogInformation("Loaded {Count} connection profiles", Connections.Count);
         }
         catch (Exception ex)
