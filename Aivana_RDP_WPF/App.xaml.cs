@@ -31,6 +31,7 @@ public partial class App : WpfApplication
 
         // Configure dependency injection
         var services = new ServiceCollection();
+        services.AddSingleton<IServiceProvider>(sp => sp); // Self-reference for service provider access
         ConfigureServices(services, configuration);
         _serviceProvider = services.BuildServiceProvider();
 
@@ -38,8 +39,16 @@ public partial class App : WpfApplication
         var loggerFactory = _serviceProvider.GetRequiredService<ILoggerFactory>();
         loggerFactory.AddProvider(new FileLoggerProvider(_serviceProvider.GetRequiredService<IOptions<FileLoggerOptions>>()));
 
+        // Create MainViewModel manually (needs IServiceProvider)
+        var connectionListViewModel = _serviceProvider.GetRequiredService<ViewModels.ConnectionManagement.ConnectionListViewModel>();
+        var mainViewModel = new MainViewModel(
+            connectionListViewModel,
+            _serviceProvider,
+            _serviceProvider.GetRequiredService<ILogger<MainViewModel>>());
+
         // Set MainWindow DataContext with injected ViewModel
         var mainWindow = _serviceProvider.GetRequiredService<MainWindow>();
+        mainWindow.DataContext = mainViewModel;
         mainWindow.Show();
     }
 
@@ -126,13 +135,21 @@ public partial class App : WpfApplication
         services.AddSingleton<ISessionRecordingService, SessionRecordingService>();
         services.AddSingleton<IPerformanceMonitorService, PerformanceMonitorService>();
         services.AddSingleton<ICredentialService, CredentialService>();
+        services.AddSingleton<IThemeService, ThemeService>();
         services.AddSingleton<INotificationService, NotificationService>();
 
         // Register ViewModels
         services.AddTransient<ViewModels.ConnectionManagement.ConnectionListViewModel>();
         services.AddTransient<ViewModels.ConnectionManagement.ConnectionConfigViewModel>();
         services.AddTransient<ViewModels.ConnectionManagement.ConnectionSessionViewModel>();
-        services.AddTransient<MainViewModel>();
+        services.AddTransient<ViewModels.SettingsViewModel>();
+        
+        // MainViewModel needs IServiceProvider, so register after building
+        services.AddSingleton<MainViewModel>(sp =>
+        {
+            var connectionListViewModel = sp.GetRequiredService<ViewModels.ConnectionManagement.ConnectionListViewModel>();
+            return new MainViewModel(connectionListViewModel, sp, sp.GetRequiredService<ILogger<MainViewModel>>());
+        });
 
         // Register MainWindow
         services.AddTransient<MainWindow>();

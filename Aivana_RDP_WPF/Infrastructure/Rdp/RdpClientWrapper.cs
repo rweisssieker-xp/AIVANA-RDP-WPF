@@ -1,7 +1,7 @@
 using System.Windows.Forms;
 using System.Windows.Forms.Integration;
 using Microsoft.Extensions.Logging;
-using MSTSCLib;
+using AxMSTSCLib;
 
 namespace Aivana_RDP_WPF.Infrastructure.Rdp;
 
@@ -12,7 +12,7 @@ public class RdpClientWrapper : IDisposable
 {
     private readonly ILogger<RdpClientWrapper> _logger;
     private WindowsFormsHost? _host;
-    private AxMsRdpClient9NotSafeForScripting? _rdpClient;
+    private AxMSTSCLib.AxMsRdpClient9NotSafeForScripting? _rdpClient;
     private bool _isConnected;
 
     public RdpClientWrapper(ILogger<RdpClientWrapper> logger)
@@ -31,7 +31,7 @@ public class RdpClientWrapper : IDisposable
             _host = new WindowsFormsHost();
             
             // Create MSTSC ActiveX Control
-            _rdpClient = new AxMsRdpClient9NotSafeForScripting();
+            _rdpClient = new AxMSTSCLib.AxMsRdpClient9NotSafeForScripting();
             
             // Configure RDP client settings
             _rdpClient.Size = new System.Drawing.Size(1024, 768);
@@ -88,7 +88,7 @@ public class RdpClientWrapper : IDisposable
             // Set advanced settings
             _rdpClient.AdvancedSettings9.Compress = 1; // Enable compression
             _rdpClient.AdvancedSettings9.BitmapPeristence = 1; // Enable bitmap caching
-            _rdpClient.AdvancedSettings9.EnableAutoReconnect = 1; // Enable auto-reconnect
+            _rdpClient.AdvancedSettings9.EnableAutoReconnect = true; // Enable auto-reconnect
             
             // Set display settings
             _rdpClient.DesktopWidth = 1920;
@@ -139,14 +139,14 @@ public class RdpClientWrapper : IDisposable
     public bool IsConnected => _isConnected;
 
     // Event handlers
-    private void RdpClient_OnConnected(object sender, IMsTscAxEvents_OnConnectedEvent e)
+    private void RdpClient_OnConnected(object sender, EventArgs e)
     {
         _logger.LogInformation("RDP connection established");
         _isConnected = true;
         Connected?.Invoke(this, EventArgs.Empty);
     }
 
-    private void RdpClient_OnDisconnected(object sender, IMsTscAxEvents_OnDisconnectedEvent e)
+    private void RdpClient_OnDisconnected(object sender, AxMSTSCLib.IMsTscAxEvents_OnDisconnectedEvent e)
     {
         _logger.LogInformation("RDP connection disconnected. Reason: {Reason}", e.discReason);
         _isConnected = false;
@@ -159,13 +159,13 @@ public class RdpClientWrapper : IDisposable
         LoginComplete?.Invoke(this, EventArgs.Empty);
     }
 
-    private void RdpClient_OnFatalError(object sender, IMsTscAxEvents_OnFatalErrorEvent e)
+    private void RdpClient_OnFatalError(object sender, AxMSTSCLib.IMsTscAxEvents_OnFatalErrorEvent e)
     {
         _logger.LogError("RDP fatal error: {ErrorCode}", e.errorCode);
         FatalError?.Invoke(this, new RdpErrorEventArgs(e.errorCode));
     }
 
-    private void RdpClient_OnWarning(object sender, IMsTscAxEvents_OnWarningEvent e)
+    private void RdpClient_OnWarning(object sender, AxMSTSCLib.IMsTscAxEvents_OnWarningEvent e)
     {
         _logger.LogWarning("RDP warning: {WarningCode}", e.warningCode);
         Warning?.Invoke(this, new RdpWarningEventArgs(e.warningCode));

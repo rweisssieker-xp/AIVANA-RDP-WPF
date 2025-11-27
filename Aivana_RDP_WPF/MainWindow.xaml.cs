@@ -10,24 +10,32 @@ namespace Aivana_RDP_WPF;
 /// </summary>
 public partial class MainWindow : Window
 {
-    private readonly MainViewModel _viewModel;
+    private MainViewModel? _viewModel;
 
-    public MainWindow(MainViewModel viewModel)
+    public MainWindow()
     {
         InitializeComponent();
+        Loaded += MainWindow_Loaded;
+    }
+
+    public MainWindow(MainViewModel viewModel) : this()
+    {
         DataContext = viewModel;
         _viewModel = viewModel;
-        Loaded += MainWindow_Loaded;
     }
 
     private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        await _viewModel.InitializeCommand.ExecuteAsync(null);
+        if (DataContext is MainViewModel vm)
+        {
+            _viewModel = vm;
+            await vm.InitializeCommand.ExecuteAsync(null);
+        }
     }
 
     private void ConnectionItem_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (sender is FrameworkElement element && element.DataContext is ConnectionProfile profile)
+        if (_viewModel != null && sender is FrameworkElement element && element.DataContext is ConnectionProfile profile)
         {
             // Handle connection selection
             _viewModel.ConnectionListViewModel.SelectedConnection = profile;
@@ -36,11 +44,10 @@ public partial class MainWindow : Window
 
     private void ConnectButton_Click(object sender, RoutedEventArgs e)
     {
-        if (sender is Button button && button.Tag is ConnectionProfile profile)
+        if (_viewModel != null && sender is Button button && button.Tag is ConnectionProfile profile)
         {
-            // Open connection session
+            // Open connection session - this will trigger view switch via MainViewModel
             _viewModel.ConnectionListViewModel.SelectedConnection = profile;
-            // TODO: Switch to connection session view
         }
     }
 }

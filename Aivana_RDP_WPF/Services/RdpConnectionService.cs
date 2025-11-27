@@ -37,12 +37,37 @@ public class RdpConnectionService : IRdpConnectionService
         }
     }
 
-    public void Connect(ConnectionProfile profile)
+    public async Task ConnectAsync(ConnectionProfile profile, string? password = null)
     {
         if (_activeConnections.TryGetValue(profile.Id, out var wrapper))
         {
-            wrapper.Connect(profile.ServerAddress, profile.Port, profile.Username ?? "", profile.Domain);
+            await Task.Run(() =>
+            {
+                wrapper.Connect(
+                    profile.ServerAddress, 
+                    profile.Port, 
+                    profile.Username ?? "", 
+                    profile.Domain,
+                    password);
+            });
             _logger.LogInformation("Connected to profile {ProfileId}", profile.Id);
+        }
+        else
+        {
+            throw new InvalidOperationException($"No connection host found for profile {profile.Id}");
+        }
+    }
+
+    public void Connect(ConnectionProfile profile, string? password = null)
+    {
+        if (_activeConnections.TryGetValue(profile.Id, out var wrapper))
+        {
+            wrapper.Connect(profile.ServerAddress, profile.Port, profile.Username ?? "", profile.Domain, password);
+            _logger.LogInformation("Connected to profile {ProfileId}", profile.Id);
+        }
+        else
+        {
+            throw new InvalidOperationException($"No connection host found for profile {profile.Id}");
         }
     }
 
@@ -55,6 +80,15 @@ public class RdpConnectionService : IRdpConnectionService
             wrapper.Dispose();
             _logger.LogInformation("Disconnected from profile {ProfileId}", profileId);
         }
+    }
+
+    public bool IsConnected(int profileId)
+    {
+        if (_activeConnections.TryGetValue(profileId, out var wrapper))
+        {
+            return wrapper.IsConnected;
+        }
+        return false;
     }
 }
 

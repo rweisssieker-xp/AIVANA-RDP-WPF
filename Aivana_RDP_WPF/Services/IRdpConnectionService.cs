@@ -9,7 +9,9 @@ namespace Aivana_RDP_WPF.Services;
 public interface IRdpConnectionService
 {
     WindowsFormsHost? CreateConnectionHost(ConnectionProfile profile);
-    void Connect(ConnectionProfile profile);
+    void Connect(ConnectionProfile profile, string? password = null);
+    Task ConnectAsync(ConnectionProfile profile, string? password = null);
     void Disconnect(int profileId);
+    bool IsConnected(int profileId);
 }
 

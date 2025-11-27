@@ -62,10 +62,13 @@
 
         <!-- Main Content Area -->
         <Grid Grid.Column="1" Background="White">
-            <ContentControl Content="{Binding ConnectionListViewModel}">
+            <ContentControl Content="{Binding CurrentContent}">
                 <ContentControl.Resources>
                     <DataTemplate DataType="{x:Type cm:ConnectionListViewModel}">
                         <views:ConnectionListView DataContext="{Binding}"/>
+                    </DataTemplate>
+                    <DataTemplate DataType="{x:Type cm:ConnectionSessionViewModel}">
+                        <views:ConnectionSessionView DataContext="{Binding}"/>
                     </DataTemplate>
                 </ContentControl.Resources>
             </ContentControl>

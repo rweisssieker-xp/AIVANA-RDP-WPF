@@ -13,7 +13,7 @@ public partial class ConnectionSessionViewModel : ObservableObject
 {
     private readonly IRdpConnectionService _rdpConnectionService;
     private readonly ILogger<ConnectionSessionViewModel> _logger;
-    private readonly ConnectionProfile _profile;
+    private ConnectionProfile? _profile;
 
     [ObservableProperty]
     private bool _isConnected;
@@ -24,21 +24,35 @@ public partial class ConnectionSessionViewModel : ObservableObject
     [ObservableProperty]
     private string _statusMessage = "Ready to connect";
 
-    public ConnectionProfile Profile => _profile;
+    [ObservableProperty]
+    private System.Windows.Forms.Integration.WindowsFormsHost? _rdpHost;
+
+    public ConnectionProfile? Profile => _profile;
 
     public ConnectionSessionViewModel(
-        ConnectionProfile profile,
         IRdpConnectionService rdpConnectionService,
         ILogger<ConnectionSessionViewModel> logger)
     {
-        _profile = profile;
         _rdpConnectionService = rdpConnectionService;
         _logger = logger;
+    }
+
+    public void LoadProfile(ConnectionProfile profile)
+    {
+        _profile = profile;
+        OnPropertyChanged(nameof(Profile));
+        StatusMessage = $"Ready to connect to {profile.ServerAddress}";
     }
 
     [RelayCommand]
     private async Task ConnectAsync()
     {
+        if (_profile == null)
+        {
+            StatusMessage = "No profile selected";
+            return;
+        }
+
         if (IsConnected || IsConnecting)
             return;
 
@@ -48,7 +62,16 @@ public partial class ConnectionSessionViewModel : ObservableObject
         try
         {
             _logger.LogInformation("Connecting to {Server}:{Port}", _profile.ServerAddress, _profile.Port);
-            await Task.Run(() => _rdpConnectionService.Connect(_profile));
+            
+            // Create RDP host if not exists
+            if (RdpHost == null)
+            {
+                RdpHost = _rdpConnectionService.CreateConnectionHost(_profile);
+                OnPropertyChanged(nameof(RdpHost));
+            }
+            
+            // Connect
+            await _rdpConnectionService.ConnectAsync(_profile);
             IsConnected = true;
             StatusMessage = "Connected";
         }
@@ -66,7 +89,7 @@ public partial class ConnectionSessionViewModel : ObservableObject
     [RelayCommand]
     private void Disconnect()
     {
-        if (!IsConnected)
+        if (_profile == null || !IsConnected)
             return;
 
         try
