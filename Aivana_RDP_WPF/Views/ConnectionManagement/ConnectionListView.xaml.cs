@@ -1,6 +1,7 @@
 using System.Windows;
 using System.Windows.Controls;
 using WpfUserControl = System.Windows.Controls.UserControl;
+using WpfApplication = System.Windows.Application;
 using Aivana_RDP_WPF.ViewModels.ConnectionManagement;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -49,7 +50,7 @@ public partial class ConnectionListView : WpfUserControl
     {
         if (DataContext is not ConnectionListViewModel vm) return;
 
-        var serviceProvider = Application.Current.Resources["ServiceProvider"] as IServiceProvider;
+        var serviceProvider = WpfApplication.Current.Resources["ServiceProvider"] as IServiceProvider;
         if (serviceProvider == null) return;
 
         var configViewModel = serviceProvider.GetRequiredService<ConnectionConfigViewModel>();

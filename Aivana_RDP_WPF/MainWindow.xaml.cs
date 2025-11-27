@@ -33,4 +33,14 @@ public partial class MainWindow : Window
             _viewModel.ConnectionListViewModel.SelectedConnection = profile;
         }
     }
+
+    private void ConnectButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is Button button && button.Tag is ConnectionProfile profile)
+        {
+            // Open connection session
+            _viewModel.ConnectionListViewModel.SelectedConnection = profile;
+            // TODO: Switch to connection session view
+        }
+    }
 }

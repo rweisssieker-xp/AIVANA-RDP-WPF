@@ -131,6 +131,7 @@ public partial class App : WpfApplication
         // Register ViewModels
         services.AddTransient<ViewModels.ConnectionManagement.ConnectionListViewModel>();
         services.AddTransient<ViewModels.ConnectionManagement.ConnectionConfigViewModel>();
+        services.AddTransient<ViewModels.ConnectionManagement.ConnectionSessionViewModel>();
         services.AddTransient<MainViewModel>();
 
         // Register MainWindow

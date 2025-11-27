@@ -48,7 +48,7 @@ public partial class ConnectionSessionViewModel : ObservableObject
         try
         {
             _logger.LogInformation("Connecting to {Server}:{Port}", _profile.ServerAddress, _profile.Port);
-            _rdpConnectionService.Connect(_profile);
+            await Task.Run(() => _rdpConnectionService.Connect(_profile));
             IsConnected = true;
             StatusMessage = "Connected";
         }

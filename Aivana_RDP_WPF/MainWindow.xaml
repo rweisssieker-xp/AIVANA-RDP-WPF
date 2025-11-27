@@ -39,11 +39,19 @@
                                         BorderBrush="#E1E1E1" BorderThickness="1" 
                                         CornerRadius="4" Cursor="Hand"
                                         MouseLeftButtonDown="ConnectionItem_MouseLeftButtonDown">
-                                    <StackPanel>
-                                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14"/>
-                                        <TextBlock Text="{Binding ServerAddress}" Foreground="#6B6B6B" FontSize="12" Margin="0,4,0,0"/>
-                                        <TextBlock Text="{Binding Port, StringFormat='Port: {0}'}" Foreground="#6B6B6B" FontSize="11" Margin="0,2,0,0"/>
-                                    </StackPanel>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*"/>
+                                            <ColumnDefinition Width="Auto"/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Grid.Column="0">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" FontSize="14"/>
+                                            <TextBlock Text="{Binding ServerAddress}" Foreground="#6B6B6B" FontSize="12" Margin="0,4,0,0"/>
+                                            <TextBlock Text="{Binding Port, StringFormat='Port: {0}'}" Foreground="#6B6B6B" FontSize="11" Margin="0,2,0,0"/>
+                                        </StackPanel>
+                                        <Button Grid.Column="1" Content="Connect" Padding="8,4" Margin="8,0,0,0"
+                                                Click="ConnectButton_Click" Tag="{Binding}"/>
+                                    </Grid>
                                 </Border>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
