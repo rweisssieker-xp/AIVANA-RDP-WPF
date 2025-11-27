@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Aivana_RDP_WPF.Models;
 using Aivana_RDP_WPF.Services;
+using Aivana_RDP_WPF.ViewModels.ConnectionManagement;
 
 namespace Aivana_RDP_WPF.ViewModels.ConnectionManagement;
 

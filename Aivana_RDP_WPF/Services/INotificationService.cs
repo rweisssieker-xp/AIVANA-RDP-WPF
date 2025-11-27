@@ -5,6 +5,8 @@ namespace Aivana_RDP_WPF.Services;
 /// </summary>
 public interface INotificationService
 {
-    // Will be implemented later
+    void ShowInfo(string message, string? title = null);
+    void ShowSuccess(string message, string? title = null);
+    void ShowWarning(string message, string? title = null);
+    void ShowError(string message, string? title = null);
 }
-

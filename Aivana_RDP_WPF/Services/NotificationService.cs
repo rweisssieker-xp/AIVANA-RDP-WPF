@@ -1,3 +1,4 @@
+using System.Windows;
 using Microsoft.Extensions.Logging;
 
 namespace Aivana_RDP_WPF.Services;
@@ -12,6 +13,42 @@ public class NotificationService : INotificationService
     public NotificationService(ILogger<NotificationService> logger)
     {
         _logger = logger;
+    }
+
+    public void ShowInfo(string message, string? title = null)
+    {
+        _logger.LogInformation("Notification: {Message}", message);
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            MessageBox.Show(message, title ?? "Information", MessageBoxButton.OK, MessageBoxImage.Information);
+        });
+    }
+
+    public void ShowSuccess(string message, string? title = null)
+    {
+        _logger.LogInformation("Success notification: {Message}", message);
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            MessageBox.Show(message, title ?? "Success", MessageBoxButton.OK, MessageBoxImage.Information);
+        });
+    }
+
+    public void ShowWarning(string message, string? title = null)
+    {
+        _logger.LogWarning("Warning notification: {Message}", message);
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            MessageBox.Show(message, title ?? "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+        });
+    }
+
+    public void ShowError(string message, string? title = null)
+    {
+        _logger.LogError("Error notification: {Message}", message);
+        Application.Current.Dispatcher.Invoke(() =>
+        {
+            MessageBox.Show(message, title ?? "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+        });
     }
 }
 
