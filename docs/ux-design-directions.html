@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aivana_RDP_WPF - Design Direction Showcase</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #F3F3F3;
+            padding: 24px;
+        }
+        .container { max-width: 1600px; margin: 0 auto; }
+        h1 { 
+            font-size: 28px; 
+            font-weight: 600; 
+            margin-bottom: 8px; 
+            color: #000000;
+        }
+        .subtitle {
+            font-size: 14px;
+            color: #6B6B6B;
+            margin-bottom: 32px;
+        }
+        .direction-section {
+            background: #FFFFFF;
+            border-radius: 8px;
+            padding: 24px;
+            margin-bottom: 32px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .direction-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .direction-title {
+            font-size: 20px;
+            font-weight: 600;
+            color: #0078D4;
+        }
+        .direction-badge {
+            background: #0078D4;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .mockup-preview {
+            border: 1px solid #E1E1E1;
+            border-radius: 4px;
+            background: #FFFFFF;
+            padding: 24px;
+            margin-top: 16px;
+        }
+        .mockup-sidebar {
+            width: 280px;
+            background: #F9F9F9;
+            border-right: 1px solid #E1E1E1;
+            padding: 16px;
+            float: left;
+            min-height: 600px;
+        }
+        .mockup-content {
+            margin-left: 280px;
+            padding: 24px;
+            min-height: 600px;
+        }
+        .sidebar-item {
+            padding: 8px 12px;
+            margin: 4px 0;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        .sidebar-item:hover {
+            background: #E8F4F8;
+        }
+        .sidebar-item.active {
+            background: #0078D4;
+            color: white;
+        }
+        .connection-card {
+            background: #FFFFFF;
+            border: 1px solid #E1E1E1;
+            border-radius: 4px;
+            padding: 16px;
+            margin-bottom: 12px;
+        }
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+        .card-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #000000;
+        }
+        .card-status {
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: 600;
+            background: #107C10;
+            color: white;
+        }
+        .card-details {
+            font-size: 12px;
+            color: #6B6B6B;
+            margin-bottom: 8px;
+        }
+        .card-actions {
+            display: flex;
+            gap: 8px;
+        }
+        .btn-small {
+            padding: 4px 12px;
+            border-radius: 4px;
+            border: 1px solid #E1E1E1;
+            background: transparent;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        .btn-small:hover {
+            background: #F3F3F3;
+        }
+        .clearfix::after {
+            content: "";
+            display: table;
+            clear: both;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎨 Design Direction Showcase</h1>
+        <p class="subtitle">Aivana_RDP_WPF - Spacious Professional Dashboard</p>
+
+        <div class="direction-section">
+            <div class="direction-header">
+                <h2 class="direction-title">Direction 1: Spacious Professional Dashboard</h2>
+                <span class="direction-badge">SELECTED</span>
+            </div>
+            <p style="color: #6B6B6B; margin-bottom: 16px;">
+                <strong>Personality:</strong> Professional & Efficient<br>
+                <strong>Best for:</strong> IT Administrators and Power Users<br>
+                <strong>Visual Style:</strong> Clean, balanced information density with generous white space
+            </p>
+            <div class="mockup-preview clearfix">
+                <div class="mockup-sidebar">
+                    <div style="font-weight: 600; margin-bottom: 16px; font-size: 14px;">Connections</div>
+                    <div class="sidebar-item active">Favorites</div>
+                    <div class="sidebar-item">All Connections</div>
+                    <div class="sidebar-item">Recent</div>
+                    <div style="margin-top: 24px; font-weight: 600; margin-bottom: 8px; font-size: 12px; color: #6B6B6B;">GROUPS</div>
+                    <div class="sidebar-item">Production</div>
+                    <div class="sidebar-item">Development</div>
+                    <div class="sidebar-item">Testing</div>
+                </div>
+                <div class="mockup-content">
+                    <h3 style="font-size: 18px; font-weight: 600; margin-bottom: 16px;">Dashboard</h3>
+                    <div class="connection-card">
+                        <div class="card-header">
+                            <span class="card-title">Production Server 01</span>
+                            <span class="card-status">Connected</span>
+                        </div>
+                        <div class="card-details">192.168.1.100:3389 • Last connected: 2 minutes ago</div>
+                        <div class="card-actions">
+                            <button class="btn-small">Open</button>
+                            <button class="btn-small">Settings</button>
+                        </div>
+                    </div>
+                    <div class="connection-card">
+                        <div class="card-header">
+                            <span class="card-title">Development Server 02</span>
+                            <span class="card-status" style="background: #6B6B6B;">Disconnected</span>
+                        </div>
+                        <div class="card-details">192.168.1.101:3389 • Last connected: Yesterday</div>
+                        <div class="card-actions">
+                            <button class="btn-small">Connect</button>
+                            <button class="btn-small">Settings</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="direction-section">
+            <div class="direction-header">
+                <h2 class="direction-title">Direction 2: Dense Information Dashboard</h2>
+            </div>
+            <p style="color: #6B6B6B; margin-bottom: 16px;">
+                <strong>Personality:</strong> Information-Rich & Efficient<br>
+                <strong>Best for:</strong> Power Users managing many connections<br>
+                <strong>Visual Style:</strong> Compact layout maximizing information density
+            </p>
+            <p style="color: #6B6B6B; font-style: italic;">(Not selected - Spacious Professional Dashboard chosen instead)</p>
+        </div>
+
+        <div class="direction-section">
+            <div class="direction-header">
+                <h2 class="direction-title">Direction 3: Minimal Clean Interface</h2>
+            </div>
+            <p style="color: #6B6B6B; margin-bottom: 16px;">
+                <strong>Personality:</strong> Minimal & Focused<br>
+                <strong>Best for:</strong> Users who prefer simplicity<br>
+                <strong>Visual Style:</strong> Maximum white space, minimal UI elements
+            </p>
+            <p style="color: #6B6B6B; font-style: italic;">(Not selected - Spacious Professional Dashboard chosen instead)</p>
+        </div>
+    </div>
+</body>
+</html>
+
