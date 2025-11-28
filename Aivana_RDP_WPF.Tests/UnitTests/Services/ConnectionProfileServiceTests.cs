@@ -12,12 +12,11 @@ namespace Aivana_RDP_WPF.Tests.UnitTests.Services;
 public class ConnectionProfileServiceTests : TestBase
 {
     private readonly Mock<IConnectionProfileService> _mockService;
-    private readonly ILogger<ConnectionProfileService> _logger;
 
     public ConnectionProfileServiceTests()
     {
         _mockService = new Mock<IConnectionProfileService>();
-        _logger = CreateMockLogger<ConnectionProfileService>().Object;
+        ConnectionProfileFactory.ResetIdCounter();
     }
 
     [Fact]
@@ -26,7 +25,7 @@ public class ConnectionProfileServiceTests : TestBase
     {
         // Given
         var profile = ConnectionProfileFactory.Create("Test Server", "192.168.1.100");
-        _mockService.Setup(s => s.CreateProfileAsync(It.IsAny<ConnectionProfile>()))
+        _mockService.Setup(s => s.CreateProfileAsync(It.IsAny<ConnectionProfile>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(profile);
 
         // When
@@ -46,15 +45,14 @@ public class ConnectionProfileServiceTests : TestBase
         // Given
         var profile = ConnectionProfileFactory.Create("Original Name", "192.168.1.100");
         profile.Name = "Updated Name";
-        _mockService.Setup(s => s.UpdateProfileAsync(It.IsAny<ConnectionProfile>()))
-            .ReturnsAsync(profile);
+        _mockService.Setup(s => s.UpdateProfileAsync(It.IsAny<ConnectionProfile>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         // When
-        var result = await _mockService.Object.UpdateProfileAsync(profile);
+        await _mockService.Object.UpdateProfileAsync(profile);
 
         // Then
-        result.Should().NotBeNull();
-        result.Name.Should().Be("Updated Name");
+        _mockService.Verify(s => s.UpdateProfileAsync(It.Is<ConnectionProfile>(p => p.Name == "Updated Name"), It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -62,15 +60,15 @@ public class ConnectionProfileServiceTests : TestBase
     public async Task DeleteProfileAsync_ShouldDeleteProfile()
     {
         // Given
-        var profileId = Guid.NewGuid();
-        _mockService.Setup(s => s.DeleteProfileAsync(It.IsAny<Guid>()))
-            .ReturnsAsync(true);
+        var profileId = 1;
+        _mockService.Setup(s => s.DeleteProfileAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
 
         // When
-        var result = await _mockService.Object.DeleteProfileAsync(profileId);
+        await _mockService.Object.DeleteProfileAsync(profileId);
 
         // Then
-        result.Should().BeTrue();
+        _mockService.Verify(s => s.DeleteProfileAsync(profileId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -78,10 +76,9 @@ public class ConnectionProfileServiceTests : TestBase
     public async Task GetProfileByIdAsync_ShouldRetrieveProfile()
     {
         // Given
-        var profileId = Guid.NewGuid();
+        var profileId = 1;
         var profile = ConnectionProfileFactory.Create("Test Server", "192.168.1.100");
-        profile.Id = profileId;
-        _mockService.Setup(s => s.GetProfileByIdAsync(It.Is<Guid>(id => id == profileId)))
+        _mockService.Setup(s => s.GetProfileByIdAsync(It.Is<int>(id => id == profileId), It.IsAny<CancellationToken>()))
             .ReturnsAsync(profile);
 
         // When
@@ -89,7 +86,7 @@ public class ConnectionProfileServiceTests : TestBase
 
         // Then
         result.Should().NotBeNull();
-        result.Id.Should().Be(profileId);
+        result!.Name.Should().Be("Test Server");
     }
 
     [Fact]
@@ -119,4 +116,3 @@ public class ConnectionProfileServiceTests : TestBase
         profile.Port.Should().BeLessThan(1);
     }
 }
-

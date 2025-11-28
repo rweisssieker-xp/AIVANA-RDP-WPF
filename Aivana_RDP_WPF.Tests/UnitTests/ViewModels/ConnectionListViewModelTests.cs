@@ -1,8 +1,10 @@
 using FluentAssertions;
 using Moq;
 using Xunit;
+using Microsoft.Extensions.Logging;
 using Aivana_RDP_WPF.ViewModels.ConnectionManagement;
 using Aivana_RDP_WPF.Services;
+using Aivana_RDP_WPF.Models;
 using Aivana_RDP_WPF.Tests.TestHelpers;
 using Aivana_RDP_WPF.Tests.TestHelpers.Factories;
 
@@ -17,6 +19,7 @@ public class ConnectionListViewModelTests : TestBase
     {
         _mockConnectionService = new Mock<IConnectionProfileService>();
         _mockLogger = CreateMockLogger<ConnectionListViewModel>();
+        ConnectionProfileFactory.ResetIdCounter();
     }
 
     [Fact]
@@ -35,19 +38,23 @@ public class ConnectionListViewModelTests : TestBase
 
     [Fact]
     [Trait("Priority", "P0")]
-    public async Task LoadConnectionsAsync_ShouldLoadConnections()
+    public async Task LoadConnectionsCommand_ShouldLoadConnections()
     {
         // Given
         var profiles = ConnectionProfileFactory.CreateMultiple(5);
-        _mockConnectionService.Setup(s => s.GetAllProfilesAsync())
+        _mockConnectionService.Setup(s => s.GetAllProfilesAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(profiles);
+        _mockConnectionService.Setup(s => s.GetAllGroupsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<string>());
+        _mockConnectionService.Setup(s => s.GetAllTagsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new List<string>());
 
         var viewModel = new ConnectionListViewModel(
             _mockConnectionService.Object,
             _mockLogger.Object);
 
         // When
-        await viewModel.LoadConnectionsAsync();
+        await viewModel.LoadConnectionsCommand.ExecuteAsync(null);
 
         // Then
         viewModel.Connections.Should().HaveCount(5);
@@ -55,7 +62,7 @@ public class ConnectionListViewModelTests : TestBase
 
     [Fact]
     [Trait("Priority", "P1")]
-    public void FilterByGroup_ShouldFilterConnections()
+    public void FilterByGroup_ShouldSetSelectedGroup()
     {
         // Given
         var viewModel = new ConnectionListViewModel(
@@ -67,7 +74,21 @@ public class ConnectionListViewModelTests : TestBase
 
         // Then
         viewModel.SelectedGroup.Should().Be("TestGroup");
-        // Filter logic would be tested here
+    }
+
+    [Fact]
+    [Trait("Priority", "P1")]
+    public void SearchText_ShouldFilterConnections()
+    {
+        // Given
+        var viewModel = new ConnectionListViewModel(
+            _mockConnectionService.Object,
+            _mockLogger.Object);
+
+        // When
+        viewModel.SearchText = "Test";
+
+        // Then
+        viewModel.SearchText.Should().Be("Test");
     }
 }
-

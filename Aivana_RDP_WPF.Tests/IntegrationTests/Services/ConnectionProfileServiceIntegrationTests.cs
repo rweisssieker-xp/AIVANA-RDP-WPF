@@ -15,15 +15,12 @@ public class ConnectionProfileServiceIntegrationTests : IClassFixture<DatabaseFi
 {
     private readonly DatabaseFixture _fixture;
     private readonly ApplicationDbContext _context;
-    private readonly IConnectionProfileService _service;
 
     public ConnectionProfileServiceIntegrationTests(DatabaseFixture fixture)
     {
         _fixture = fixture;
         _context = fixture.Context;
         _fixture.ClearDatabase();
-        // Initialize service with real database context
-        // _service = new ConnectionProfileService(_context, logger);
     }
 
     [Fact]
@@ -42,7 +39,7 @@ public class ConnectionProfileServiceIntegrationTests : IClassFixture<DatabaseFi
             .FirstOrDefaultAsync(p => p.Id == profile.Id);
         
         savedProfile.Should().NotBeNull();
-        savedProfile.ShouldBeValidConnectionProfile();
+        savedProfile!.ShouldBeValidConnectionProfile();
         savedProfile.Name.Should().Be("Test Server");
     }
 
@@ -65,7 +62,7 @@ public class ConnectionProfileServiceIntegrationTests : IClassFixture<DatabaseFi
             .FirstOrDefaultAsync(p => p.Id == profile.Id);
         
         updatedProfile.Should().NotBeNull();
-        updatedProfile.Name.Should().Be("Updated Name");
+        updatedProfile!.Name.Should().Be("Updated Name");
     }
 
     [Fact]
@@ -110,4 +107,3 @@ public class ConnectionProfileServiceIntegrationTests : IClassFixture<DatabaseFi
         favorites.Should().OnlyContain(p => p.IsFavorite);
     }
 }
-

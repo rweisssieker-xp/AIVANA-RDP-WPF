@@ -25,6 +25,9 @@ public class DatabaseFixture : IDisposable
 
     public void SeedTestData()
     {
+        // Reset factories to ensure consistent IDs
+        ConnectionProfileFactory.ResetIdCounter();
+        
         // Seed connection profiles
         var profiles = new List<ConnectionProfile>
         {
@@ -40,8 +43,12 @@ public class DatabaseFixture : IDisposable
     public void ClearDatabase()
     {
         Context.ConnectionProfiles.RemoveRange(Context.ConnectionProfiles);
-        Context.SessionHistory.RemoveRange(Context.SessionHistory);
+        Context.SessionHistories.RemoveRange(Context.SessionHistories);
         Context.SaveChanges();
+        
+        // Reset factories for clean state
+        ConnectionProfileFactory.ResetIdCounter();
+        SessionHistoryFactory.ResetIdCounter();
     }
 
     public void Dispose()
@@ -50,4 +57,3 @@ public class DatabaseFixture : IDisposable
         Context.Dispose();
     }
 }
-

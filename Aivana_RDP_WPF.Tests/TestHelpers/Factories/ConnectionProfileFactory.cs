@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Aivana_RDP_WPF.Models;
 
 namespace Aivana_RDP_WPF.Tests.TestHelpers.Factories;
@@ -7,6 +8,8 @@ namespace Aivana_RDP_WPF.Tests.TestHelpers.Factories;
 /// </summary>
 public static class ConnectionProfileFactory
 {
+    private static int _idCounter = 1;
+
     public static ConnectionProfile Create(
         string name,
         string serverAddress,
@@ -17,9 +20,11 @@ public static class ConnectionProfileFactory
         string? groupName = null,
         List<string>? tags = null)
     {
+        var tagsJson = tags != null ? JsonSerializer.Serialize(tags) : "[]";
+        
         return new ConnectionProfile
         {
-            Id = Guid.NewGuid(),
+            Id = _idCounter++,
             Name = name,
             ServerAddress = serverAddress,
             Port = port,
@@ -27,7 +32,7 @@ public static class ConnectionProfileFactory
             Domain = domain,
             IsFavorite = isFavorite,
             GroupName = groupName,
-            Tags = tags ?? new List<string>(),
+            Tags = tagsJson,
             Settings = "{}",
             CreatedAt = DateTime.UtcNow,
             LastConnectedAt = null,
@@ -41,7 +46,7 @@ public static class ConnectionProfileFactory
         Dictionary<string, object> settings)
     {
         var profile = Create(name, serverAddress);
-        profile.Settings = System.Text.Json.JsonSerializer.Serialize(settings);
+        profile.Settings = JsonSerializer.Serialize(settings);
         return profile;
     }
 
@@ -54,5 +59,9 @@ public static class ConnectionProfileFactory
         }
         return profiles;
     }
-}
 
+    public static void ResetIdCounter()
+    {
+        _idCounter = 1;
+    }
+}

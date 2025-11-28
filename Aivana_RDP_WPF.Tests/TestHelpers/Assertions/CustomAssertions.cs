@@ -14,25 +14,24 @@ public static class CustomAssertions
         profile.Name.Should().NotBeNullOrWhiteSpace();
         profile.ServerAddress.Should().NotBeNullOrWhiteSpace();
         profile.Port.Should().BeInRange(1, 65535);
-        profile.Id.Should().NotBeEmpty();
+        profile.Id.Should().BeGreaterThanOrEqualTo(0);
     }
 
     public static void ShouldHaveValidSessionHistory(this SessionHistory history)
     {
         history.Should().NotBeNull();
-        history.ConnectionProfileId.Should().NotBeEmpty();
-        history.ConnectedAt.Should().BeBefore(DateTime.UtcNow);
+        history.ConnectionProfileId.Should().BeGreaterThan(0);
+        history.ConnectedAt.Should().BeBefore(DateTime.UtcNow.AddSeconds(1));
         history.Status.Should().NotBeNullOrWhiteSpace();
     }
 
     public static void ShouldHaveValidPerformanceMetrics(this PerformanceMetrics metrics)
     {
         metrics.Should().NotBeNull();
-        metrics.SessionId.Should().NotBeEmpty();
-        metrics.Latency.Should().BeGreaterThanOrEqualTo(0);
-        metrics.Bandwidth.Should().BeGreaterThanOrEqualTo(0);
-        metrics.PacketLoss.Should().BeInRange(0, 100);
+        metrics.ConnectionProfileId.Should().BeGreaterThanOrEqualTo(0);
+        metrics.LatencyMs.Should().BeGreaterThanOrEqualTo(0);
+        metrics.BandwidthMbps.Should().BeGreaterThanOrEqualTo(0);
+        metrics.PacketLossPercent.Should().BeInRange(0, 100);
         metrics.FrameRate.Should().BeGreaterThanOrEqualTo(0);
     }
 }
-

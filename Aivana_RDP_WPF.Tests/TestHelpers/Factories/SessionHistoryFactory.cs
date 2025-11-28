@@ -7,8 +7,10 @@ namespace Aivana_RDP_WPF.Tests.TestHelpers.Factories;
 /// </summary>
 public static class SessionHistoryFactory
 {
+    private static int _idCounter = 1;
+
     public static SessionHistory Create(
-        Guid connectionProfileId,
+        int connectionProfileId,
         DateTime? connectedAt = null,
         DateTime? disconnectedAt = null,
         string status = "Connected",
@@ -19,7 +21,7 @@ public static class SessionHistoryFactory
 
         return new SessionHistory
         {
-            Id = Guid.NewGuid(),
+            Id = _idCounter++,
             ConnectionProfileId = connectionProfileId,
             ConnectedAt = connected,
             DisconnectedAt = disconnected,
@@ -30,7 +32,7 @@ public static class SessionHistoryFactory
     }
 
     public static List<SessionHistory> CreateRecentSessions(
-        Guid connectionProfileId,
+        int connectionProfileId,
         int count = 10)
     {
         var sessions = new List<SessionHistory>();
@@ -44,5 +46,9 @@ public static class SessionHistoryFactory
         }
         return sessions;
     }
-}
 
+    public static void ResetIdCounter()
+    {
+        _idCounter = 1;
+    }
+}

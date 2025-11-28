@@ -8,27 +8,34 @@ namespace Aivana_RDP_WPF.Tests.TestHelpers.Factories;
 public static class PerformanceMetricsFactory
 {
     public static PerformanceMetrics Create(
-        Guid sessionId,
-        double latency = 50.0,
-        double bandwidth = 10.0,
-        double packetLoss = 0.0,
+        int connectionProfileId = 1,
+        double latencyMs = 50.0,
+        double bandwidthMbps = 10.0,
+        int packetLossPercent = 0,
         double frameRate = 30.0,
+        int qualityScore = 80,
+        double cpuUsagePercent = 25.0,
+        double memoryUsageMB = 512.0,
+        double networkUsageMbps = 5.0,
         DateTime? timestamp = null)
     {
         return new PerformanceMetrics
         {
-            Id = Guid.NewGuid(),
-            SessionId = sessionId,
+            ConnectionProfileId = connectionProfileId,
             Timestamp = timestamp ?? DateTime.UtcNow,
-            Latency = latency,
-            Bandwidth = bandwidth,
-            PacketLoss = packetLoss,
-            FrameRate = frameRate
+            LatencyMs = latencyMs,
+            BandwidthMbps = bandwidthMbps,
+            PacketLossPercent = packetLossPercent,
+            FrameRate = frameRate,
+            QualityScore = qualityScore,
+            CpuUsagePercent = cpuUsagePercent,
+            MemoryUsageMB = memoryUsageMB,
+            NetworkUsageMbps = networkUsageMbps
         };
     }
 
     public static List<PerformanceMetrics> CreateTimeSeries(
-        Guid sessionId,
+        int connectionProfileId = 1,
         int count = 60,
         TimeSpan? interval = null)
     {
@@ -39,9 +46,9 @@ public static class PerformanceMetricsFactory
         for (int i = 0; i < count; i++)
         {
             metrics.Add(Create(
-                sessionId,
-                latency: 50.0 + (i % 10) * 5, // Varying latency
-                bandwidth: 10.0 - (i % 5) * 0.5, // Varying bandwidth
+                connectionProfileId: connectionProfileId,
+                latencyMs: 50.0 + (i % 10) * 5, // Varying latency
+                bandwidthMbps: 10.0 - (i % 5) * 0.5, // Varying bandwidth
                 timestamp: startTime.Add(intervalTime * i)
             ));
         }
@@ -49,4 +56,3 @@ public static class PerformanceMetricsFactory
         return metrics;
     }
 }
-

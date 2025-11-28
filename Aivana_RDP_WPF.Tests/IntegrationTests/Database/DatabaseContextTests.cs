@@ -1,3 +1,4 @@
+using System.Text.Json;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -64,12 +65,12 @@ public class DatabaseContextTests : IClassFixture<DatabaseFixture>
         var history = SessionHistoryFactory.Create(profile.Id);
 
         // When
-        _context.SessionHistory.Add(history);
+        _context.SessionHistories.Add(history);
         var result = await _context.SaveChangesAsync();
 
         // Then
         result.Should().BeGreaterThan(0);
-        _context.SessionHistory.Should().Contain(h => h.Id == history.Id);
+        _context.SessionHistories.Should().Contain(h => h.Id == history.Id);
     }
 
     [Fact]
@@ -92,8 +93,10 @@ public class DatabaseContextTests : IClassFixture<DatabaseFixture>
             .FirstOrDefaultAsync(p => p.Id == profile.Id);
         
         saved.Should().NotBeNull();
-        saved.Tags.Should().HaveCount(3);
-        saved.Tags.Should().Contain("production");
+        
+        // Tags are stored as JSON string
+        var parsedTags = JsonSerializer.Deserialize<List<string>>(saved!.Tags);
+        parsedTags.Should().HaveCount(3);
+        parsedTags.Should().Contain("production");
     }
 }
-
