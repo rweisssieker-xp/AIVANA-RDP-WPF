@@ -40,6 +40,9 @@
                     <Button Content="Disconnect" Padding="12,6" Margin="0,0,8,0"
                             Command="{Binding DisconnectCommand}"
                             IsEnabled="{Binding IsConnected}"/>
+                    <Button Content="Full Screen" Padding="12,6" Margin="0,0,8,0"
+                            Command="{Binding ToggleFullScreenCommand}"
+                            IsEnabled="{Binding IsConnected}"/>
                     <Button Content="Health Metrics" Padding="12,6"
                             Command="{Binding ToggleHealthMetricsCommand}"/>
                 </StackPanel>

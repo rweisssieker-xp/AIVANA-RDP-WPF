@@ -39,6 +39,9 @@ public partial class App : WpfApplication
         var loggerFactory = _serviceProvider.GetRequiredService<ILoggerFactory>();
         loggerFactory.AddProvider(new FileLoggerProvider(_serviceProvider.GetRequiredService<IOptions<FileLoggerOptions>>()));
 
+        // Add ServiceProvider to Application Resources for access from Views
+        Resources["ServiceProvider"] = _serviceProvider;
+
         // Create MainViewModel manually (needs IServiceProvider)
         var connectionListViewModel = _serviceProvider.GetRequiredService<ViewModels.ConnectionManagement.ConnectionListViewModel>();
         var mainViewModel = new MainViewModel(

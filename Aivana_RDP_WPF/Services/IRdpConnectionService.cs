@@ -13,5 +13,7 @@ public interface IRdpConnectionService
     Task ConnectAsync(ConnectionProfile profile, string? password = null);
     void Disconnect(int profileId);
     bool IsConnected(int profileId);
+    void SetFullScreen(int profileId, bool fullScreen);
+    void RefreshScaling(int profileId);
 }
 

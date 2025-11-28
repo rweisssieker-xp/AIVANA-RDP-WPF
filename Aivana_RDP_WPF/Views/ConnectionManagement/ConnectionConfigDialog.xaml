@@ -4,10 +4,14 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:Aivana_RDP_WPF.Views.ConnectionManagement"
+        xmlns:converters="clr-namespace:Aivana_RDP_WPF.Converters"
         mc:Ignorable="d"
         Title="Connection Configuration" Height="600" Width="600"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize">
+    <Window.Resources>
+        <converters:ColorDepthToIndexConverter x:Key="ColorDepthToIndexConverter"/>
+    </Window.Resources>
     <Grid Margin="20">
         <Grid.RowDefinitions>
             <RowDefinition Height="*"/>

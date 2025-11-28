@@ -6,6 +6,7 @@ using Aivana_RDP_WPF.Services;
 using Aivana_RDP_WPF.Models;
 using Aivana_RDP_WPF.Tests.TestHelpers;
 using Aivana_RDP_WPF.Tests.TestHelpers.Factories;
+using Aivana_RDP_WPF.Tests.TestHelpers.Fixtures;
 using Aivana_RDP_WPF.Tests.TestHelpers.Assertions;
 
 namespace Aivana_RDP_WPF.Tests.IntegrationTests.Services;

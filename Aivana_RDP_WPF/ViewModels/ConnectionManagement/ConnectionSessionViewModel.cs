@@ -40,6 +40,9 @@ public partial class ConnectionSessionViewModel : ObservableObject
     [ObservableProperty]
     private bool _isSelected;
 
+    [ObservableProperty]
+    private bool _isFullScreen;
+
     public ConnectionSessionViewModel(
         IRdpConnectionService rdpConnectionService,
         ILogger<ConnectionSessionViewModel> logger,
@@ -72,6 +75,17 @@ public partial class ConnectionSessionViewModel : ObservableObject
     private void ToggleHealthMetrics()
     {
         ShowHealthMetrics = !ShowHealthMetrics;
+    }
+
+    [RelayCommand]
+    private void ToggleFullScreen()
+    {
+        if (_profile == null || !IsConnected)
+            return;
+
+        IsFullScreen = !IsFullScreen;
+        _rdpConnectionService.SetFullScreen(_profile.Id, IsFullScreen);
+        _logger.LogInformation("Full screen toggled to {FullScreen}", IsFullScreen);
     }
 
     [RelayCommand]
@@ -108,16 +122,16 @@ public partial class ConnectionSessionViewModel : ObservableObject
                 password = credentials?.Password;
             }
             
-                // Connect
-                await _rdpConnectionService.ConnectAsync(_profile, password);
-                IsConnected = true;
-                StatusMessage = "Connected";
-                
-                // Start performance monitoring
-                if (_performanceMonitorService != null && _profile.Id > 0)
-                {
-                    await _performanceMonitorService.StartMonitoringAsync(_profile.Id);
-                }
+            // Connect
+            await _rdpConnectionService.ConnectAsync(_profile, password);
+            IsConnected = true;
+            StatusMessage = "Connected";
+            
+            // Start performance monitoring
+            if (_performanceMonitorService != null && _profile.Id > 0)
+            {
+                await _performanceMonitorService.StartMonitoringAsync(_profile.Id);
+            }
         }
         catch (Exception ex)
         {
@@ -148,6 +162,7 @@ public partial class ConnectionSessionViewModel : ObservableObject
             
             _rdpConnectionService.Disconnect(_profile.Id);
             IsConnected = false;
+            IsFullScreen = false; // Reset full screen state
             StatusMessage = "Disconnected";
             RdpHost = null; // Clear the host when disconnected
         }

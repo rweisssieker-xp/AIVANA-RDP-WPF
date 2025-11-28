@@ -90,5 +90,31 @@ public class RdpConnectionService : IRdpConnectionService
         }
         return false;
     }
+
+    public void SetFullScreen(int profileId, bool fullScreen)
+    {
+        if (_activeConnections.TryGetValue(profileId, out var wrapper))
+        {
+            wrapper.SetFullScreen(fullScreen);
+            _logger.LogInformation("Set full screen to {FullScreen} for profile {ProfileId}", fullScreen, profileId);
+        }
+        else
+        {
+            _logger.LogWarning("Cannot set full screen - no active connection for profile {ProfileId}", profileId);
+        }
+    }
+
+    public void RefreshScaling(int profileId)
+    {
+        if (_activeConnections.TryGetValue(profileId, out var wrapper))
+        {
+            wrapper.RefreshScaling();
+            _logger.LogInformation("Refreshed scaling for profile {ProfileId}", profileId);
+        }
+        else
+        {
+            _logger.LogWarning("Cannot refresh scaling - no active connection for profile {ProfileId}", profileId);
+        }
+    }
 }
 

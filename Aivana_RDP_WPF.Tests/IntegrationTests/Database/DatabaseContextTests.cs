@@ -5,6 +5,7 @@ using Aivana_RDP_WPF.Infrastructure.Database;
 using Aivana_RDP_WPF.Models;
 using Aivana_RDP_WPF.Tests.TestHelpers;
 using Aivana_RDP_WPF.Tests.TestHelpers.Factories;
+using Aivana_RDP_WPF.Tests.TestHelpers.Fixtures;
 
 namespace Aivana_RDP_WPF.Tests.IntegrationTests.Database;
 
