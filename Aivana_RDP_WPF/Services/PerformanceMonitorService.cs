@@ -17,6 +17,7 @@ public class PerformanceMonitorService : IPerformanceMonitorService
     private readonly ConcurrentDictionary<int, List<PerformanceMetrics>> _historicalMetrics = new();
 
     public event EventHandler<PerformanceMetrics>? MetricsUpdated;
+    public event EventHandler<ConnectionQuality>? QualityChanged;
 
     public PerformanceMonitorService(ILogger<PerformanceMonitorService> logger)
     {
@@ -65,6 +66,13 @@ public class PerformanceMonitorService : IPerformanceMonitorService
             return Task.FromResult(filtered);
         }
         return Task.FromResult(new List<PerformanceMetrics>());
+    }
+
+    public Task<List<PerformanceMetrics>> GetMetricsHistoryAsync(int connectionProfileId, TimeSpan period, CancellationToken ct = default)
+    {
+        var endTime = DateTime.UtcNow;
+        var startTime = endTime - period;
+        return GetHistoricalMetricsAsync(connectionProfileId, startTime, endTime, ct);
     }
 
     private async Task MonitorPerformanceAsync(int connectionProfileId, CancellationToken ct)

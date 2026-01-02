@@ -18,10 +18,20 @@ public class RdpClientWrapper : IDisposable
     private bool _isConnected;
     private bool _smartSizingEnabled = true;
     private System.Windows.Forms.Timer? _resizeTimer;
+    private int _profileId;
 
     public RdpClientWrapper(ILogger<RdpClientWrapper> logger)
     {
         _logger = logger;
+    }
+
+    /// <summary>
+    /// Gets or sets the profile ID associated with this wrapper
+    /// </summary>
+    public int ProfileId 
+    { 
+        get => _profileId; 
+        set => _profileId = value; 
     }
 
     /// <summary>

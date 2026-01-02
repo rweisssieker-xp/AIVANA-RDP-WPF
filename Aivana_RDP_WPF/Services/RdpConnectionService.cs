@@ -25,6 +25,7 @@ public class RdpConnectionService : IRdpConnectionService
             var wrapperLogger = Microsoft.Extensions.Logging.LoggerFactory.Create(builder => builder.AddConsole())
                 .CreateLogger<Infrastructure.Rdp.RdpClientWrapper>();
             var wrapper = new Infrastructure.Rdp.RdpClientWrapper(wrapperLogger);
+            wrapper.ProfileId = profile.Id; // Set the profile ID
             var host = wrapper.CreateHost();
             _activeConnections[profile.Id] = wrapper;
             _logger.LogInformation("Created RDP connection host for profile {ProfileId}", profile.Id);
@@ -115,6 +116,12 @@ public class RdpConnectionService : IRdpConnectionService
         {
             _logger.LogWarning("Cannot refresh scaling - no active connection for profile {ProfileId}", profileId);
         }
+    }
+
+    public RdpClientWrapper? GetActiveWrapper(int profileId)
+    {
+        _activeConnections.TryGetValue(profileId, out var wrapper);
+        return wrapper;
     }
 }
 

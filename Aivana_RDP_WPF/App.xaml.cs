@@ -12,6 +12,7 @@ using Aivana_RDP_WPF.ViewModels;
 using Aivana_RDP_WPF.Infrastructure.Database;
 using Aivana_RDP_WPF.Infrastructure.Logging;
 using Aivana_RDP_WPF.Models;
+using Aivana_RDP_WPF.Infrastructure.Protocols;
 
 namespace Aivana_RDP_WPF;
 
@@ -142,6 +143,26 @@ public partial class App : WpfApplication
         services.AddSingleton<IImportExportService, ImportExportService>();
         services.AddSingleton<INotificationService, NotificationService>();
 
+        // Multi-Protocol Support Services
+        services.AddSingleton<IProtocolFactory, ProtocolFactory>();
+        services.AddTransient<RdpProtocol>();
+        services.AddTransient<SshProtocol>();
+        services.AddTransient<VncProtocol>();
+
+        // Week 3-4 Core Services
+        services.AddSingleton<IQuickConnectService, QuickConnectService>();
+        services.AddSingleton<IPerformanceMonitorService, RealPerformanceMonitorService>();
+        services.AddSingleton<IWakeOnLanService, WakeOnLanService>();
+        services.AddSingleton<ISshTunnelService, SshTunnelService>();
+
+        // Phase 2 Workspace Services
+        services.AddSingleton<IWorkspaceService, WorkspaceService>();
+        services.AddSingleton<ISessionManagerService, SessionManagerService>();
+        services.AddSingleton<ILayoutPersistenceService, LayoutPersistenceService>();
+
+        // Phase 2 Workflow Services
+        services.AddSingleton<IWorkflowEngineService, WorkflowEngineService>();
+
         // Register ViewModels
         services.AddTransient<ViewModels.ConnectionManagement.ConnectionListViewModel>();
         services.AddTransient<ViewModels.ConnectionManagement.ConnectionConfigViewModel>();
@@ -155,6 +176,9 @@ public partial class App : WpfApplication
         });
         services.AddTransient<ViewModels.ConnectionManagement.ConnectionHealthViewModel>();
         services.AddTransient<ViewModels.SettingsViewModel>();
+        services.AddTransient<QuickConnectViewModel>();
+        services.AddTransient<WorkspaceViewModel>();
+        services.AddTransient<WorkflowViewModel>();
         
         // MainViewModel needs IServiceProvider, so register after building
         services.AddSingleton<MainViewModel>(sp =>

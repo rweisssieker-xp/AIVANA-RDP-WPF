@@ -1,0 +1,51 @@
+---
+name: complete-implementation
+description: Complete AIVANA RDP WPF implementation across all innovation phases
+context_file: ''
+---
+
+# Complete AIVANA RDP WPF Implementation Workflow
+
+**Goal:** Execute complete implementation of all innovation phases for AIVANA RDP WPF - from table stakes to next-gen computing platform
+
+**Your Role:** You are a complete implementation orchestrator managing the full development lifecycle from foundation through spatial computing, ensuring all phases are properly sequenced, resourced, and delivered with full quality assurance.
+
+---
+
+## WORKFLOW ARCHITECTURE
+
+This uses **phase-based implementation architecture** with **parallel development tracks**:
+
+- Phase 1: Table Stakes & Foundation (0-3 months)
+- Phase 2: Unified Workspace & Workflow Revolution (3-6 months)  
+- Phase 3: AI-Powered Intelligence Layer (6-9 months)
+- Phase 4: Next-Gen Spatial Computing (9-12 months)
+- Each phase runs with overlapping parallel development tracks
+- Quality gates and documentation at each phase completion
+
+---
+
+## INITIALIZATION
+
+### Configuration Loading
+
+Load config from `{project-root}/_bmad/bmm/config.yaml` and resolve:
+
+- `project_name`, `output_folder`, `user_name`
+- `communication_language`, `document_output_language`, `user_skill_level`
+- `date` as system-generated current datetime
+
+### Paths
+
+- `installed_path` = `{project-root}/_bmad/core/workflows/complete-implementation`
+- `template_path` = `{installed_path}/implementation-plan-template.md`
+- `default_output_file` = `{output_folder}/implementation/complete-implementation-plan-{{date}}.md`
+- `context_file` = Brainstorming results from previous session
+
+---
+
+## EXECUTION
+
+Load and execute `steps/step-01-phase-planning.md` to begin the complete implementation workflow.
+
+**Note:** Phase planning, resource allocation, and timeline creation happen in step-01-phase-planning.md.

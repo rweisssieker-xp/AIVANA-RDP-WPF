@@ -1,5 +1,6 @@
 using System.Windows.Forms.Integration;
 using Aivana_RDP_WPF.Models;
+using Aivana_RDP_WPF.Infrastructure.Rdp;
 
 namespace Aivana_RDP_WPF.Services;
 
@@ -15,5 +16,6 @@ public interface IRdpConnectionService
     bool IsConnected(int profileId);
     void SetFullScreen(int profileId, bool fullScreen);
     void RefreshScaling(int profileId);
+    RdpClientWrapper? GetActiveWrapper(int profileId);
 }
 
