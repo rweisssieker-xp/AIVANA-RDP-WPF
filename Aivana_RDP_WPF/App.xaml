@@ -12,6 +12,8 @@
             
             <!-- Converters -->
             <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+            <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+            <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter"/>
             <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter"/>
             <converters:ColorDepthToIndexConverter x:Key="ColorDepthToIndexConverter"/>
             <converters:NullToVisibilityConverter x:Key="NullToVisibilityConverter"/>

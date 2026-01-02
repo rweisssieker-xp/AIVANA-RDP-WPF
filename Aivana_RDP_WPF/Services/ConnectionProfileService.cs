@@ -38,26 +38,71 @@ public class ConnectionProfileService : IConnectionProfileService
 
     public async Task<ConnectionProfile> CreateProfileAsync(ConnectionProfile profile, CancellationToken ct = default)
     {
-        _logger.LogInformation("Creating connection profile {ProfileName}", profile.Name);
-        
-        profile.CreatedAt = DateTime.UtcNow;
-        profile.ConnectionCount = 0;
-        
-        _context.ConnectionProfiles.Add(profile);
-        await _context.SaveChangesAsync(ct);
-        
-        _logger.LogInformation("Created connection profile {ProfileId} with name {ProfileName}", profile.Id, profile.Name);
-        return profile;
+        try
+        {
+            _logger.LogInformation("Creating connection profile {ProfileName}", profile.Name);
+            
+            // Validation
+            if (string.IsNullOrWhiteSpace(profile.Name))
+                throw new ArgumentException("Profile name is required");
+            
+            if (string.IsNullOrWhiteSpace(profile.ServerAddress))
+                throw new ArgumentException("Server address is required");
+            
+            // Check for duplicate names
+            var existingProfile = await _context.ConnectionProfiles
+                .FirstOrDefaultAsync(p => p.Name == profile.Name, ct);
+            
+            if (existingProfile != null)
+                throw new InvalidOperationException($"A profile with name '{profile.Name}' already exists");
+            
+            profile.CreatedAt = DateTime.UtcNow;
+            profile.ConnectionCount = 0;
+            
+            _context.ConnectionProfiles.Add(profile);
+            await _context.SaveChangesAsync(ct);
+            
+            _logger.LogInformation("Created connection profile {ProfileId} with name {ProfileName}", profile.Id, profile.Name);
+            return profile;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error creating connection profile {ProfileName}", profile?.Name);
+            throw;
+        }
     }
 
     public async Task UpdateProfileAsync(ConnectionProfile profile, CancellationToken ct = default)
     {
-        _logger.LogInformation("Updating connection profile {ProfileId}", profile.Id);
-        
-        _context.ConnectionProfiles.Update(profile);
-        await _context.SaveChangesAsync(ct);
-        
-        _logger.LogInformation("Updated connection profile {ProfileId}", profile.Id);
+        try
+        {
+            _logger.LogInformation("Updating connection profile {ProfileId}", profile.Id);
+            
+            // Validation
+            if (string.IsNullOrWhiteSpace(profile.Name))
+                throw new ArgumentException("Profile name is required");
+            
+            if (string.IsNullOrWhiteSpace(profile.ServerAddress))
+                throw new ArgumentException("Server address is required");
+            
+            // Check for duplicate names (excluding current profile)
+            var existingProfile = await _context.ConnectionProfiles
+                .FirstOrDefaultAsync(p => p.Name == profile.Name && p.Id != profile.Id, ct);
+            
+            if (existingProfile != null)
+                throw new InvalidOperationException($"A profile with name '{profile.Name}' already exists");
+            
+            profile.UpdatedAt = DateTime.UtcNow;
+            _context.ConnectionProfiles.Update(profile);
+            await _context.SaveChangesAsync(ct);
+            
+            _logger.LogInformation("Updated connection profile {ProfileId}", profile.Id);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error updating connection profile {ProfileId}", profile?.Id);
+            throw;
+        }
     }
 
     public async Task DeleteProfileAsync(int id, CancellationToken ct = default)

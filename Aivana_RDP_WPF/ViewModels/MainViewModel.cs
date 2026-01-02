@@ -83,6 +83,102 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
+    private void ShowAnalytics()
+    {
+        try
+        {
+            var analyticsViewModel = _serviceProvider.GetRequiredService<AnalyticsViewModel>();
+            CurrentContent = analyticsViewModel;
+            ActiveSession = null;
+            _connectionListViewModel.SelectedConnection = null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error switching to analytics dashboard");
+        }
+    }
+
+    [RelayCommand]
+    private void ShowAIAssistant()
+    {
+        try
+        {
+            var aiAssistantViewModel = _serviceProvider.GetRequiredService<AIAssistantViewModel>();
+            CurrentContent = aiAssistantViewModel;
+            ActiveSession = null;
+            _connectionListViewModel.SelectedConnection = null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error switching to AI assistant dashboard");
+        }
+    }
+
+    [RelayCommand]
+    private void ShowSettings()
+    {
+        try
+        {
+            var settingsViewModel = _serviceProvider.GetRequiredService<SettingsViewModel>();
+            CurrentContent = settingsViewModel;
+            ActiveSession = null;
+            _connectionListViewModel.SelectedConnection = null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error switching to settings");
+        }
+    }
+
+    [RelayCommand]
+    private void ShowHistory()
+    {
+        try
+        {
+            var historyViewModel = _serviceProvider.GetRequiredService<HistoryViewModel>();
+            CurrentContent = historyViewModel;
+            ActiveSession = null;
+            _connectionListViewModel.SelectedConnection = null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error switching to history");
+        }
+    }
+
+    [RelayCommand]
+    private void ShowHealth()
+    {
+        try
+        {
+            var healthViewModel = _serviceProvider.GetRequiredService<HealthOverviewViewModel>();
+            CurrentContent = healthViewModel;
+            ActiveSession = null;
+            _connectionListViewModel.SelectedConnection = null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error switching to health overview");
+        }
+    }
+
+    [RelayCommand]
+    private void ShowReports()
+    {
+        try
+        {
+            var reportsViewModel = _serviceProvider.GetRequiredService<ReportsViewModel>();
+            CurrentContent = reportsViewModel;
+            ActiveSession = null;
+            _connectionListViewModel.SelectedConnection = null;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error switching to reports");
+        }
+    }
+
+    [RelayCommand]
     private async Task InitializeAsync()
     {
         _logger.LogInformation("Initializing MainViewModel");

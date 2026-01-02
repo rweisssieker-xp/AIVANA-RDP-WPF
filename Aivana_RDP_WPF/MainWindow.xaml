@@ -7,6 +7,12 @@
         xmlns:vm="clr-namespace:Aivana_RDP_WPF.ViewModels"
         xmlns:cm="clr-namespace:Aivana_RDP_WPF.ViewModels.ConnectionManagement"
         xmlns:views="clr-namespace:Aivana_RDP_WPF.Views.ConnectionManagement"
+        xmlns:analyticsViews="clr-namespace:Aivana_RDP_WPF.Views.Analytics"
+        xmlns:aiViews="clr-namespace:Aivana_RDP_WPF.Views.AI"
+        xmlns:settingsViews="clr-namespace:Aivana_RDP_WPF.Views"
+        xmlns:historyViews="clr-namespace:Aivana_RDP_WPF.Views.History"
+        xmlns:healthViews="clr-namespace:Aivana_RDP_WPF.Views.Health"
+        xmlns:reportsViews="clr-namespace:Aivana_RDP_WPF.Views.Reports"
         mc:Ignorable="d"
         Title="Aivana RDP Client" Height="768" Width="1024"
         MinWidth="1024" MinHeight="600"
@@ -22,6 +28,7 @@
             <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                 </Grid.RowDefinitions>
 
@@ -30,8 +37,26 @@
                     <TextBlock Text="Aivana RDP" Foreground="White" FontSize="18" FontWeight="SemiBold"/>
                 </Border>
 
+                <!-- Navigation Buttons -->
+                <StackPanel Grid.Row="1" Margin="8,8,8,4">
+                    <Button Content="Connections" Padding="12,8" Margin="0,0,0,6"
+                            Command="{Binding ShowConnectionListCommand}"/>
+                    <Button Content="Analytics" Padding="12,8" Margin="0,0,0,6"
+                            Command="{Binding ShowAnalyticsCommand}"/>
+                    <Button Content="AI Assistant" Padding="12,8" Margin="0,0,0,6"
+                            Command="{Binding ShowAIAssistantCommand}"/>
+                    <Button Content="Reports" Padding="12,8" Margin="0,0,0,6"
+                            Command="{Binding ShowReportsCommand}"/>
+                    <Button Content="Health" Padding="12,8" Margin="0,0,0,6"
+                            Command="{Binding ShowHealthCommand}"/>
+                    <Button Content="History" Padding="12,8" Margin="0,0,0,6"
+                            Command="{Binding ShowHistoryCommand}"/>
+                    <Button Content="Settings" Padding="12,8" Margin="0,0,0,6"
+                            Command="{Binding ShowSettingsCommand}"/>
+                </StackPanel>
+
                 <!-- Connection List -->
-                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
                     <ItemsControl ItemsSource="{Binding ConnectionListViewModel.Connections}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
@@ -69,6 +94,24 @@
                     </DataTemplate>
                     <DataTemplate DataType="{x:Type cm:ConnectionSessionViewModel}">
                         <views:ConnectionSessionView DataContext="{Binding}"/>
+                    </DataTemplate>
+                    <DataTemplate DataType="{x:Type vm:AnalyticsViewModel}">
+                        <analyticsViews:AnalyticsDashboardView DataContext="{Binding}"/>
+                    </DataTemplate>
+                    <DataTemplate DataType="{x:Type vm:AIAssistantViewModel}">
+                        <aiViews:AIAssistantDashboardView DataContext="{Binding}"/>
+                    </DataTemplate>
+                    <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+                        <settingsViews:SettingsView DataContext="{Binding}"/>
+                    </DataTemplate>
+                    <DataTemplate DataType="{x:Type vm:HistoryViewModel}">
+                        <historyViews:HistoryView DataContext="{Binding}"/>
+                    </DataTemplate>
+                    <DataTemplate DataType="{x:Type vm:HealthOverviewViewModel}">
+                        <healthViews:HealthOverviewView DataContext="{Binding}"/>
+                    </DataTemplate>
+                    <DataTemplate DataType="{x:Type vm:ReportsViewModel}">
+                        <reportsViews:ReportsView DataContext="{Binding}"/>
                     </DataTemplate>
                 </ContentControl.Resources>
             </ContentControl>

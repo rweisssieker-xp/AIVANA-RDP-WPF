@@ -3,6 +3,7 @@ using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Aivana_RDP_WPF.Models;
 using Aivana_RDP_WPF.Services;
+using System.Collections.ObjectModel;
 
 namespace Aivana_RDP_WPF.ViewModels.ConnectionManagement;
 
@@ -14,8 +15,11 @@ public partial class ConnectionSessionViewModel : ObservableObject
     private readonly IRdpConnectionService _rdpConnectionService;
     private readonly ICredentialService? _credentialService;
     private readonly IPerformanceMonitorService? _performanceMonitorService;
+    private readonly IHealthCheckService? _healthCheckService;
+    private readonly ISessionHistoryService? _sessionHistoryService;
     private readonly ILogger<ConnectionSessionViewModel> _logger;
     private ConnectionProfile? _profile;
+    private int? _activeSessionHistoryId;
 
     [ObservableProperty]
     private bool _isConnected;
@@ -43,15 +47,28 @@ public partial class ConnectionSessionViewModel : ObservableObject
     [ObservableProperty]
     private bool _isFullScreen;
 
+    [ObservableProperty]
+    private bool _isHealthChecking;
+
+    [ObservableProperty]
+    private HealthCheckResult? _healthCheckResult;
+
+    [ObservableProperty]
+    private ObservableCollection<SessionHistory> _recentSessionHistory = new();
+
     public ConnectionSessionViewModel(
         IRdpConnectionService rdpConnectionService,
         ILogger<ConnectionSessionViewModel> logger,
         ICredentialService? credentialService = null,
-        IPerformanceMonitorService? performanceMonitorService = null)
+        IPerformanceMonitorService? performanceMonitorService = null,
+        IHealthCheckService? healthCheckService = null,
+        ISessionHistoryService? sessionHistoryService = null)
     {
         _rdpConnectionService = rdpConnectionService;
         _credentialService = credentialService;
         _performanceMonitorService = performanceMonitorService;
+        _healthCheckService = healthCheckService;
+        _sessionHistoryService = sessionHistoryService;
         _logger = logger;
     }
 
@@ -68,6 +85,31 @@ public partial class ConnectionSessionViewModel : ObservableObject
             HealthViewModel = new ConnectionHealthViewModel(_performanceMonitorService, 
                 loggerFactory.CreateLogger<ConnectionHealthViewModel>());
             HealthViewModel.LoadMetrics(profile.Id);
+        }
+
+        _ = Task.Run(LoadRecentHistoryAsync);
+    }
+
+    private async Task LoadRecentHistoryAsync()
+    {
+        try
+        {
+            if (_profile == null || _sessionHistoryService == null || _profile.Id <= 0)
+                return;
+
+            var items = await _sessionHistoryService.GetRecentAsync(_profile.Id, 25);
+            App.Current.Dispatcher.Invoke(() =>
+            {
+                RecentSessionHistory.Clear();
+                foreach (var item in items)
+                {
+                    RecentSessionHistory.Add(item);
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load session history");
         }
     }
 
@@ -106,6 +148,12 @@ public partial class ConnectionSessionViewModel : ObservableObject
         try
         {
             _logger.LogInformation("Connecting to {Server}:{Port}", _profile.ServerAddress, _profile.Port);
+
+            if (_sessionHistoryService != null && _profile.Id > 0)
+            {
+                var history = await _sessionHistoryService.StartSessionAsync(_profile.Id);
+                _activeSessionHistoryId = history.Id;
+            }
             
             // Create RDP host if not exists
             if (RdpHost == null)
@@ -132,11 +180,20 @@ public partial class ConnectionSessionViewModel : ObservableObject
             {
                 await _performanceMonitorService.StartMonitoringAsync(_profile.Id);
             }
+
+            _ = Task.Run(LoadRecentHistoryAsync);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error connecting to {Server}:{Port}", _profile.ServerAddress, _profile.Port);
             StatusMessage = $"Connection failed: {ex.Message}";
+
+            if (_sessionHistoryService != null && _activeSessionHistoryId.HasValue)
+            {
+                await _sessionHistoryService.CompleteSessionAsync(_activeSessionHistoryId.Value, "Error", ex.Message);
+                _activeSessionHistoryId = null;
+                _ = Task.Run(LoadRecentHistoryAsync);
+            }
         }
         finally
         {
@@ -165,11 +222,49 @@ public partial class ConnectionSessionViewModel : ObservableObject
             IsFullScreen = false; // Reset full screen state
             StatusMessage = "Disconnected";
             RdpHost = null; // Clear the host when disconnected
+
+            if (_sessionHistoryService != null && _activeSessionHistoryId.HasValue)
+            {
+                await _sessionHistoryService.CompleteSessionAsync(_activeSessionHistoryId.Value, "Disconnected", null);
+                _activeSessionHistoryId = null;
+                _ = Task.Run(LoadRecentHistoryAsync);
+            }
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Error disconnecting from {Server}:{Port}", _profile.ServerAddress, _profile.Port);
             StatusMessage = $"Disconnect error: {ex.Message}";
+
+            if (_sessionHistoryService != null && _activeSessionHistoryId.HasValue)
+            {
+                await _sessionHistoryService.CompleteSessionAsync(_activeSessionHistoryId.Value, "Error", ex.Message);
+                _activeSessionHistoryId = null;
+                _ = Task.Run(LoadRecentHistoryAsync);
+            }
+        }
+    }
+
+    [RelayCommand]
+    private async Task RunHealthCheckAsync()
+    {
+        if (_profile == null || _healthCheckService == null)
+            return;
+
+        try
+        {
+            IsHealthChecking = true;
+            HealthCheckResult = null;
+            var result = await _healthCheckService.CheckAsync(_profile);
+            HealthCheckResult = result;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Health check failed");
+            HealthCheckResult = new HealthCheckResult { ErrorMessage = ex.Message, Port = _profile.Port };
+        }
+        finally
+        {
+            IsHealthChecking = false;
         }
     }
 }
