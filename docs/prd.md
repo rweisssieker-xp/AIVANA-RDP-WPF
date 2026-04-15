@@ -371,7 +371,7 @@ Aivana RDP WPF aims to replace fragmented workflows (multiple tools for RDP, SSH
 | ID | Requirement |
 |---|---|
 | FR-UI-01 | Users can switch between Light and Dark themes |
-| FR-UI-02 | The layout responds to window resising |
+| FR-UI-02 | The layout responds to window resizing |
 | FR-UI-03 | All major features are accessible via keyboard shortcuts |
 | FR-UI-04 | The application provides smooth animations and visual feedback |
 | FR-UI-05 | Connection status is indicated with colour-coded indicators |
