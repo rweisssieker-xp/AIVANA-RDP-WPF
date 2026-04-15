@@ -1,6 +1,6 @@
 # Aivana RDP WPF - Documentation Index
 
-**Last Updated:** 2025-11-27
+**Last Updated:** 2026-04-15
 
 ---
 
@@ -14,9 +14,11 @@ This index provides a complete guide to all available documentation for Aivana R
 
 ### For Users
 - **[README.md](../README.md)** - Project overview, quick start, and features
+- **[DOCUMENTATION.md](DOCUMENTATION.md)** ⭐ **Complete master documentation** — all features, APIs, configuration, and guides in one place
 - **[User Guide](USER_GUIDE.md)** - Complete user documentation with step-by-step guides
 
 ### For Developers
+- **[DOCUMENTATION.md](DOCUMENTATION.md)** ⭐ **Complete master documentation** — includes developer guide, service API, data models, and testing
 - **[Developer Guide](DEVELOPER_GUIDE.md)** - Development setup, workflow, and code guidelines
 - **[Architecture](architecture.md)** - Technical architecture and design decisions
 
@@ -94,11 +96,14 @@ This index provides a complete guide to all available documentation for Aivana R
 ## 📋 Project Documentation
 
 ### Requirements & Planning
-- **[PRD (Product Requirements Document)](prd.md)** - Product requirements
-  - 58 Functional Requirements (FR1-FR58)
-  - 35 Non-Functional Requirements (NFR1-NFR35)
-  - MVP Scope
-  - Success Criteria
+- **[PRD (Product Requirements Document)](prd.md)** - Product requirements v2.0
+  - Executive Summary & Product Vision
+  - Target Users & Personas
+  - Product Scope (MVP, Growth, Vision)
+  - Functional Requirements (FR-CM, FR-CN, FR-WS, FR-WF, FR-WOL, FR-SSH, FR-FT, FR-CB, FR-PM, FR-SR, FR-SEC, FR-UI, FR-CFG)
+  - Non-Functional Requirements (Performance, Security, Scalability, Accessibility, Reliability, Integration)
+  - Technical Architecture Overview
+  - Roadmap (v1.0 released → v2.0 vision)
 
 - **[Epics & Stories](epics.md)** - Epic and story breakdown
   - 10 Epics
@@ -190,16 +195,16 @@ This index provides a complete guide to all available documentation for Aivana R
 
 ```
 docs/
+├── DOCUMENTATION.md                 ⭐ Complete master documentation
+├── prd.md                           ⭐ Product Requirements Document (v2.0)
 ├── USER_GUIDE.md                    # Complete user manual
 ├── DEVELOPER_GUIDE.md               # Developer setup and workflow
 ├── CONFIGURATION_GUIDE.md           # Configuration reference
 ├── TROUBLESHOOTING.md               # Troubleshooting guide
 ├── CONTRIBUTING.md                  # Contribution guidelines
 ├── DOCUMENTATION_INDEX.md           # This file
-├── TECH_WRITER_DOCUMENTATION_GAP_ANALYSIS.md  # Documentation analysis
 │
 ├── architecture.md                  # Architecture specification
-├── prd.md                           # Product requirements
 ├── ux-design-specification.md       # UX design spec
 ├── epics.md                         # Epics and stories
 │
@@ -243,5 +248,4 @@ docs/
 
 ---
 
-**Last Updated:** 2025-11-27
-
+**Last Updated:** 2026-04-15

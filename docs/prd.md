@@ -1,344 +1,392 @@
-# Aivana_RDP_WPF - Product Requirements Document
+# Aivana RDP WPF — Product Requirements Document (PRD)
 
-**Author:** BMad
-**Date:** 2025-11-26T16:21:53.631Z
-**Version:** 1.0
+**Author:** Product Team  
+**Date:** 2026-04-15  
+**Version:** 2.0  
+**Status:** Active
+
+---
+
+## Table of Contents
+
+1. [Executive Summary](#executive-summary)
+2. [Product Vision](#product-vision)
+3. [Target Users & Personas](#target-users--personas)
+4. [Project Classification](#project-classification)
+5. [Success Criteria](#success-criteria)
+6. [Product Scope](#product-scope)
+7. [Functional Requirements](#functional-requirements)
+8. [Non-Functional Requirements](#non-functional-requirements)
+9. [Technical Architecture Overview](#technical-architecture-overview)
+10. [Roadmap](#roadmap)
 
 ---
 
 ## Executive Summary
 
-Aivana_RDP_WPF is a modern, feature-rich Windows desktop application that reimagines the Remote Desktop Protocol (RDP) client experience. Built with WPF and Fluent Design principles, it addresses the limitations of standard RDP clients by providing an intuitive, powerful, and visually appealing interface for managing remote desktop connections.
+**Aivana RDP WPF** is a modern, feature-rich Windows desktop application that reimagines the Remote Desktop Protocol (RDP) client experience. Built with WPF (.NET 8) and Fluent Design principles, it transforms the outdated standard Windows RDP client into a comprehensive remote access management platform.
 
-The product solves the problem of fragmented, outdated RDP client experiences by consolidating advanced features into a single, modern application. Users can manage multiple connections, transfer files seamlessly, synchronize clipboards, monitor performance, and customize their experience—all within a beautiful, responsive interface that feels native to Windows 11.
+The product consolidates advanced features — multi-protocol connectivity (RDP, SSH, VNC), intelligent workflow automation, secure credential management, file transfer, clipboard synchronisation, performance monitoring, session recording, and a rich tabbed workspace — into a single, modern application that feels native to Windows 10/11.
 
 ### What Makes This Special
 
-Aivana_RDP_WPF stands out through its combination of:
+| Differentiator | Description |
+|---|---|
+| **Multi-Protocol** | Single app for RDP, SSH, and VNC — no tool-switching |
+| **Workflow Engine** | Automate complex connection sequences and tasks with a visual workflow editor |
+| **Modern UI/UX** | First-class Fluent Design 2.0 — light/dark themes, responsive layout |
+| **Wake-on-LAN** | Wake sleeping machines from the app before connecting |
+| **SSH Tunnelling** | Automatic SSH tunnel setup for secure connections through jump hosts |
+| **Workspace Management** | Tabbed interface with persistent layouts (remote sessions, file explorer, terminal, dashboard) |
+| **Security-First** | Windows Credential Manager integration, TLS enforcement, encrypted storage |
 
-1. **Modern UI/UX Excellence**: First-class Fluent Design implementation that feels native and delightful, not like a legacy tool
-2. **Performance Leadership**: Hardware-accelerated rendering and intelligent network optimization deliver smooth experiences even on low-bandwidth connections
-3. **Comprehensive Feature Set**: Beyond basic RDP—file transfer, clipboard sync, session recording, multi-connection management, and collaboration tools in one package
-4. **Developer-Friendly**: Scripting support, API integration, and automation capabilities for power users
-5. **Security-First**: Modern authentication methods, encrypted credential storage, and audit logging without sacrificing usability
+---
 
-This product transforms RDP from a basic connectivity tool into a comprehensive remote desktop management platform.
+## Product Vision
+
+> **To be the definitive remote desktop management platform for Windows users — professional-grade power wrapped in a consumer-grade experience.**
+
+Aivana RDP WPF aims to replace fragmented workflows (multiple tools for RDP, SSH, and VNC; separate file transfer clients; manual scripting for repetitive tasks) with one cohesive, elegant application.
+
+---
+
+## Target Users & Personas
+
+### Persona 1 — IT Administrator "Alex"
+- Manages 50–500 Windows and Linux servers
+- Uses RDP daily, SSH occasionally, struggles with poor tooling
+- Needs: quick connection switching, bulk operations, audit logs, Wake-on-LAN
+- Pain: existing tools are slow, hard to organise, and lack automation
+
+### Persona 2 — DevOps Engineer "Dana"
+- Connects to cloud VMs, jumps through bastion hosts, needs SSH tunnels
+- Automates repetitive connection workflows
+- Needs: SSH tunnel support, workflow automation, multi-session management
+- Pain: manual SSH-tunnel setup every time; no unified view of active sessions
+
+### Persona 3 — Power User "Morgan"
+- Works on multiple remote machines simultaneously for development
+- Copies files between machines regularly, records sessions for documentation
+- Needs: file transfer, clipboard sync, session recording, tabbed workspace
+- Pain: standard mstsc.exe is primitive; no clipboard history or file drag-and-drop
+
+### Persona 4 — Small Business Owner "Sam"
+- Connects to 2–5 remote PCs for remote support and administration
+- Not technical; needs a simple, clean interface
+- Needs: saved connection profiles, favourites, one-click connect
+- Pain: forgets IP addresses and settings; existing tools too complex
 
 ---
 
 ## Project Classification
 
-**Technical Type:** desktop_app
-**Domain:** general
-**Complexity:** low
+| Attribute | Value |
+|---|---|
+| **Type** | Windows Desktop Application |
+| **Domain** | Remote Access & IT Management |
+| **Framework** | .NET 8.0, WPF |
+| **UI System** | Fluent Design System 2.0 |
+| **Complexity** | Medium |
+| **Primary Platform** | Windows 10 (1809+), Windows 11 |
+| **Architecture** | x64 |
+| **Pattern** | MVVM, Dependency Injection, Service Layer |
 
-Aivana_RDP_WPF is a Windows-native desktop application built with WPF (Windows Presentation Foundation), targeting Windows 10 and Windows 11. The application follows modern desktop application patterns while leveraging Windows-specific capabilities for optimal performance and integration.
-
-**Platform Support:**
-- Primary: Windows 10 (version 1809+) and Windows 11
-- Architecture: x64 (primary), x86 (optional)
-- .NET Framework: .NET 8.0 or later
-
-**System Integration:**
-- Windows Credential Manager integration for secure credential storage
-- Windows Notification System for connection status updates
-- Windows File Explorer integration for drag-and-drop file operations
-- Windows Clipboard API for seamless clipboard synchronization
-- Windows Print Spooler integration for printer redirection
-
-**Update Strategy:**
-- Auto-update mechanism with user control
-- Background update downloads
-- Update notifications with scheduling options
-- Rollback capability for problematic updates
-
-**Offline Capabilities:**
-- Full functionality when disconnected (view saved sessions, edit profiles)
-- Offline credential management
-- Local session history and statistics
-- Offline help and documentation
+### Windows Integration Points
+- Windows Credential Manager (secure credential storage)
+- Windows Notification System (connection status alerts)
+- Windows File Explorer (drag-and-drop file operations)
+- Windows Clipboard API (clipboard synchronisation)
+- MSTSC ActiveX Control (`mstscax.dll`) for RDP rendering
 
 ---
 
 ## Success Criteria
 
-Success for Aivana_RDP_WPF is measured by user satisfaction, adoption, and the product's ability to replace existing RDP client workflows.
+### Primary Success Metrics
 
-**Primary Success Metrics:**
+| Metric | Target |
+|---|---|
+| Active users (6 months post-launch) | 1,000+ |
+| User satisfaction rating | ≥ 4.5 / 5.0 stars |
+| Advanced feature adoption | ≥ 70 % of users use 3+ advanced features |
+| Connection success rate | ≥ 99.5 % with auto-reconnect |
+| Security incidents | 0 credential breaches |
 
-1. **User Adoption**: 1,000+ active users within 6 months of launch
-2. **User Satisfaction**: 4.5+ star rating based on user feedback
-3. **Feature Utilization**: 70%+ of users actively use at least 3 advanced features beyond basic RDP
-4. **Performance**: 95%+ of users report smooth experience even on connections with <5 Mbps bandwidth
-5. **Reliability**: 99.5%+ connection success rate with auto-reconnect functionality
-6. **Security**: Zero credential breaches or security incidents
+### Performance Targets
 
-**User Experience Success:**
+| Metric | Target |
+|---|---|
+| Application startup | < 2 s (SSD + 8 GB RAM) |
+| Memory footprint (single session) | < 150 MB |
+| Idle CPU usage | < 5 % |
+| Connection establishment (LAN) | < 3 s |
+| RDP frame rate | ≥ 30 FPS on standard hardware |
+| Clipboard sync latency | < 100 ms (text) |
+| UI frame rate during animations | 60 FPS |
+| Max saved connection profiles | ≥ 100 without degradation |
+| Max simultaneous connections | ≥ 10 |
 
-- Users can establish their first connection within 2 minutes of installation
-- Users report the interface as "intuitive" and "modern" compared to standard RDP clients
-- Power users successfully automate workflows using scripting features
-- IT administrators adopt it as their primary RDP client for managing multiple servers
-
-**Technical Success:**
-
-- Application launches in <2 seconds on standard hardware
-- Memory footprint remains under 150MB for typical usage
-- CPU usage stays under 5% when idle
-- GPU acceleration successfully utilized on 90%+ of compatible systems
+### User Experience Targets
+- New user can establish first connection within 2 minutes of installation
+- Power users can automate workflows without writing code
+- Interface rated "intuitive" and "modern" compared with mstsc.exe
 
 ---
 
 ## Product Scope
 
-### MVP - Minimum Viable Product
+### MVP — Minimum Viable Product (v1.0 — Delivered)
 
-The MVP focuses on delivering a polished, modern RDP client with essential features that differentiate it from standard Windows RDP client (mstsc.exe).
+#### Core Connection Features
+- RDP protocol support using MSTSC ActiveX Control
+- SSH protocol support
+- VNC protocol support
+- Connection profile management (create, edit, delete)
+- Connection groups and tags for organisation
+- Favourites for quick access
+- Search and filter across all profiles
+- Connection history tracking
+- Import/Export: `.rdp`, JSON, CSV formats
+- Multi-session support with tabbed interface
+- Auto-reconnect with configurable retry logic
 
-**Core Connection Features:**
-- RDP protocol support (RDP 8.0+)
-- Connection profile management with save/load
-- Quick connect with favorites
-- Connection history with thumbnails
-- Auto-reconnect with retry logic
-- Multi-connection support (multiple simultaneous sessions)
+#### Advanced Features
+- **Wake-on-LAN**: Send magic packets before connecting, wait for host availability
+- **SSH Tunnelling**: Automatic tunnel creation through jump hosts for secure access
+- **Workflow Engine**: Visual automation for multi-step connection tasks
+- **Workspace Management**: Tabbed workspace with remote sessions, file explorer, local terminal, dashboard, and settings tabs
+- **Quick Connect**: Fast connection without saving a profile
+- **Layout Persistence**: Save and restore workspace layouts
 
-**Modern UI Foundation:**
-- Fluent Design implementation
-- Dark mode and light mode
-- Responsive layout adapting to window size
-- Touch-optimized for tablets
-- Customizable themes (at least 3 built-in themes)
+#### File Transfer & Clipboard
+- File upload/download between local and remote machines
+- Transfer history with pause/resume/cancel
+- Bidirectional clipboard synchronisation
+- Clipboard history (last 50 items)
+- Text and image format support
 
-**Essential Features:**
-- File transfer (drag & drop, progress indicators)
-- Bidirectional clipboard synchronization
-- Multi-monitor support (span across monitors, individual selection)
-- Session recording (record to video file)
-- Basic performance monitoring (bandwidth, latency display)
+#### Performance & Monitoring
+- Real-time network metrics: latency, bandwidth, packet loss
+- Quality metrics: frame rate, quality score (0–100), quality level (VeryPoor → Excellent)
+- Resource metrics: CPU usage, memory, network usage
+- Historical performance data storage
 
-**Security:**
-- Encrypted credential storage (Windows Credential Manager)
-- Certificate management UI
+#### Security
+- Windows Credential Manager integration (encrypted credential storage)
+- TLS 1.2+ enforcement for all network communications
 - Session encryption options
-- Basic audit logging
+- Basic audit logging (connection events, security activities)
+- Certificate management UI
 
-**Connection Management:**
-- Connection groups and tags
-- Import/export connection profiles
-- Connection health monitoring
-- Bandwidth usage statistics
+#### User Interface
+- Fluent Design System 2.0 implementation
+- Light and Dark themes with instant switching
+- Responsive layout (adapts to window size)
+- Keyboard shortcuts for all major actions
+- Modern animations and transitions
 
-### Growth Features (Post-MVP)
+#### Infrastructure
+- SQLite database via Entity Framework Core (profiles, history, metrics)
+- Dependency Injection (Microsoft.Extensions.DependencyInjection)
+- Structured logging (Microsoft.Extensions.Logging, file + console)
+- Configurable via `appsettings.json`
 
-**Advanced UI/UX:**
-- Custom theme editor
-- Advanced gesture support
-- Context-aware UI elements
-- Animation customization
-- Accessibility enhancements (screen reader support, high contrast modes)
+### Growth Features (Post-v1.0)
 
-**Performance Enhancements:**
-- Hardware-accelerated rendering (GPU)
-- Adaptive quality settings based on network conditions
+#### Advanced UI/UX
+- Custom theme editor (colour customisation)
+- Advanced gesture support for touch devices
+- Multi-monitor RDP configuration UI
+- Accessibility enhancements: full screen-reader support (Narrator, NVDA, JAWS), WCAG 2.1 AA colours
+
+#### Performance Enhancements
+- Hardware-accelerated (GPU) rendering
+- Adaptive quality based on network conditions
 - Advanced compression algorithms
-- Performance metrics dashboard
-- Bottleneck detection and reporting
+- Bottleneck detection and alerts
 
-**Collaboration Features:**
-- Screen sharing (view-only mode)
+#### Collaboration
+- Screen sharing / view-only mode
 - Session annotation tools
 - Chat integration within sessions
 - Session broadcasting
 
-**Advanced Security:**
+#### Advanced Security
 - Multi-Factor Authentication (MFA) support
-- Hardware key support (YubiKey, etc.)
+- Hardware key support (YubiKey, FIDO2)
 - IP whitelisting/blacklisting
 - VPN integration
-- Advanced audit logging dashboard
-- Compliance reporting
+- Compliance reporting (SOC 2, ISO 27001)
 
-**Automation & Integration:**
+#### Automation & Integration
+- REST API for third-party integration
 - PowerShell scripting support
 - Macro recording and playback
 - Scheduled connections
-- REST API for integration
 - Command-line interface (CLI)
-- Password manager integration (1Password, Bitwarden, etc.)
+- Password manager integration (1Password, Bitwarden)
 
-**Advanced Features:**
+#### Advanced Peripherals
 - USB device redirection
-- Audio redirection with quality options
-- Printer redirection with advanced options
-- Session templates for common scenarios
-- Connection templates sharing
+- Audio redirection with quality controls
+- Printer redirection
+- Session recording to video (Windows Media Foundation)
 
 ### Vision (Future)
 
-**AI-Powered Features:**
-- Network quality prediction
-- Adaptive quality adjustment using ML
-- Predictive reconnection
-- Usage pattern learning
-- Automated troubleshooting suggestions
-
-**Advanced Collaboration:**
-- Multi-user sessions (multiple users controlling same session)
-- Remote control handoff
-- Team workspaces
-- Session collaboration tools
-
-**Integration Platform:**
-- Plugin system for extensibility
-- Extension marketplace
-- Webhook support for events
-- CI/CD pipeline integration
-- ITSM integration (ServiceNow, Jira, etc.)
-
-**Innovation Features:**
-- VR/AR remote desktop visualization (experimental)
-- Voice control for navigation
-- Natural language queries for connection management
-- Advanced analytics and insights dashboard
+- **AI-powered**: Network quality prediction, adaptive quality via ML, automated troubleshooting
+- **Plugin marketplace**: Extension SDK and community marketplace
+- **Cloud sync**: Encrypted cloud backup of connection profiles and settings
+- **Team workspaces**: Shared connection libraries for organisations
+- **VR/AR visualisation** (experimental): Remote desktop in 3D workspace
 
 ---
 
 ## Functional Requirements
 
-### Connection Management
-
-**FR1:** Users can create, edit, and delete connection profiles with customizable settings (server address, port, username, display settings, etc.)
-
-**FR2:** Users can organize connections into groups and assign tags for easy categorization and filtering
-
-**FR3:** Users can mark connections as favorites for quick access from a dedicated favorites list
-
-**FR4:** Users can view connection history with visual thumbnails showing recent sessions
-
-**FR5:** Users can import connection profiles from files (RDP files, JSON, CSV formats)
-
-**FR6:** Users can export connection profiles to share with team members or backup
-
-**FR7:** Users can establish multiple simultaneous RDP connections and manage them from a unified dashboard
-
-**FR8:** Users can view connection health metrics (latency, bandwidth usage, packet loss) in real-time
-
-**FR9:** The system automatically attempts to reconnect dropped connections with configurable retry logic
-
-**FR10:** Users can configure connection-specific settings (resolution, color depth, audio, etc.) per profile
-
-### User Interface & Experience
-
-**FR11:** Users can switch between dark mode and light mode themes
-
-**FR12:** Users can select from multiple built-in themes or customize appearance settings
-
-**FR13:** The interface adapts responsively to different window sizes and screen resolutions
-
-**FR14:** Users can interact with the application using touch gestures on compatible devices (swipe, pinch, zoom)
-
-**FR15:** Users can customize toolbar layouts and menu organization
-
-**FR16:** The interface provides context-aware UI elements that adapt based on current connection state
-
-**FR17:** Users can access all features through keyboard shortcuts
-
-**FR18:** The application provides smooth animations and transitions for visual feedback
-
-### File Transfer
-
-**FR19:** Users can transfer files between local machine and remote desktop using drag-and-drop
-
-**FR20:** Users can transfer multiple files simultaneously with individual progress indicators
-
-**FR21:** Users can pause and resume file transfers
-
-**FR22:** Users can view transfer history and statistics
-
-**FR23:** The system supports resuming interrupted file transfers automatically
-
-**FR24:** Users can configure file transfer settings (default location, transfer speed limits, etc.)
-
-### Clipboard Synchronization
-
-**FR25:** Users can synchronize clipboard content bidirectionally between local and remote sessions
-
-**FR26:** The system preserves clipboard formats (text, images, files) during synchronization
-
-**FR27:** Users can view clipboard history and select previous clipboard entries
-
-**FR28:** Users can toggle clipboard synchronization on/off per connection
-
-**FR29:** Users can configure clipboard sync behavior (auto-sync, manual sync, format filtering)
-
-### Multi-Monitor Support
-
-**FR30:** Users can span remote desktop across multiple local monitors
-
-**FR31:** Users can select specific monitors for remote desktop display
-
-**FR32:** Users can configure different resolutions per monitor
-
-**FR33:** Users can arrange monitor layout to match physical setup
-
-**FR34:** The system remembers monitor preferences per connection profile
-
-### Session Recording
-
-**FR35:** Users can record remote desktop sessions to video files (MP4 format)
-
-**FR36:** Users can start, pause, and stop recording during active sessions
-
-**FR37:** Users can configure recording quality and compression settings
-
-**FR38:** Users can add annotations to recorded sessions
-
-**FR39:** Users can export recordings in multiple formats
-
-**FR40:** Users can view recording history and manage recorded files
-
-### Security & Authentication
-
-**FR41:** Users can store credentials securely using Windows Credential Manager
-
-**FR42:** Users can manage SSL/TLS certificates for secure connections
-
-**FR43:** Users can configure session encryption options (RDP security, TLS, etc.)
-
-**FR44:** The system logs connection events and security-related activities for audit purposes
-
-**FR45:** Users can configure IP whitelisting/blacklisting for connection restrictions
-
-**FR46:** Users can enable multi-factor authentication when supported by remote server
-
-**FR47:** Users can configure session timeout and idle disconnect settings
-
-### Performance Monitoring
-
-**FR48:** Users can view real-time connection statistics (bandwidth usage, latency, frame rate)
-
-**FR49:** Users can view historical performance data in graphs and charts
-
-**FR50:** Users can configure performance alerts (high latency, low bandwidth warnings)
-
-**FR51:** The system displays connection quality indicators (excellent, good, fair, poor)
-
-**FR52:** Users can export performance reports for analysis
-
-### Settings & Configuration
-
-**FR53:** Users can configure application-wide settings (default connection settings, UI preferences, etc.)
-
-**FR54:** Users can reset settings to defaults
-
-**FR55:** Users can import/export application settings for backup or migration
-
-**FR56:** Users can configure update preferences (auto-update, notification-only, manual)
-
-**FR57:** Users can access comprehensive help documentation and tutorials
-
-**FR58:** Users can provide feedback and report issues directly from the application
+### FR-CM — Connection Management
+
+| ID | Requirement |
+|---|---|
+| FR-CM-01 | Users can create, edit, and delete connection profiles with name, server address, port, username, domain, group, and tags |
+| FR-CM-02 | Users can assign connections to named groups for organisation |
+| FR-CM-03 | Users can tag connections with arbitrary labels for flexible filtering |
+| FR-CM-04 | Users can mark connections as favourites and view a favourites-only list |
+| FR-CM-05 | Users can search connections by name, server address, username, group, or tags (real-time, case-insensitive) |
+| FR-CM-06 | Users can import connection profiles from `.rdp`, JSON, and CSV files |
+| FR-CM-07 | Users can export connection profiles to JSON and CSV |
+| FR-CM-08 | The system tracks connection count and last-connected timestamp per profile |
+| FR-CM-09 | Users can configure default port, colour depth, and resolution per profile |
+| FR-CM-10 | Users can enable Wake-on-LAN per profile (MAC address, broadcast address, wake timeout) |
+| FR-CM-11 | Users can enable SSH tunnel per profile (SSH host, port, credentials, local/remote port mapping) |
+| FR-CM-12 | Users can select the protocol per profile (RDP, SSH, VNC) |
+
+### FR-CN — Connection & Session
+
+| ID | Requirement |
+|---|---|
+| FR-CN-01 | Users can connect to and disconnect from remote desktops |
+| FR-CN-02 | The system supports RDP connections using the MSTSC ActiveX Control |
+| FR-CN-03 | The system supports SSH connections |
+| FR-CN-04 | The system supports VNC connections |
+| FR-CN-05 | The system supports ≥10 simultaneous active sessions in a tabbed interface |
+| FR-CN-06 | Session status is reflected in real time (Connecting, Connected, Disconnected, Suspended, Error, Reconnecting) |
+| FR-CN-07 | Users can toggle full-screen mode per session |
+| FR-CN-08 | The system tracks session duration, connect/disconnect timestamps, and session events |
+| FR-CN-09 | The system attempts auto-reconnect on dropped connections with configurable retry |
+| FR-CN-10 | Users can perform a Quick Connect without saving a profile |
+
+### FR-WS — Workspace Management
+
+| ID | Requirement |
+|---|---|
+| FR-WS-01 | The workspace supports multiple tab types: RemoteSession, LocalTerminal, FileExplorer, Settings, Dashboard, Custom |
+| FR-WS-02 | Each tab has a title, icon, status indicator, and close button |
+| FR-WS-03 | Users can save and restore workspace layouts (open tabs, positions) |
+| FR-WS-04 | The last-activated timestamp is tracked per tab for navigation history |
+| FR-WS-05 | Tabs can be individually closable or pinned |
+
+### FR-WF — Workflow Engine
+
+| ID | Requirement |
+|---|---|
+| FR-WF-01 | Users can create named workflow definitions with an ordered list of steps |
+| FR-WF-02 | Workflows support step types: ConnectRemote, DisconnectRemote, StartApplication, StopApplication, TransferFile, ExecuteCommand, SendKeystrokes, TakeScreenshot, WaitCondition, ShowNotification, LogMessage, SetVariable, IfCondition, LoopSteps, ParallelSteps, Delay, CustomScript |
+| FR-WF-03 | Workflows support triggers: Manual, Scheduled, OnConnection, OnDisconnection, OnFileChange, OnSystemEvent, OnHotkey, OnApplicationStart |
+| FR-WF-04 | Each step has configurable parameters, timeout, retry count, and an optional conditional |
+| FR-WF-05 | Conditions support operators: Equals, NotEquals, GreaterThan, LessThan, Contains, StartsWith, EndsWith, IsNull, IsNotNull |
+| FR-WF-06 | Workflows can define and pass variables between steps |
+| FR-WF-07 | Workflow execution history and step results are tracked |
+| FR-WF-08 | Users can enable, disable, pause, and delete workflows |
+
+### FR-WOL — Wake-on-LAN
+
+| ID | Requirement |
+|---|---|
+| FR-WOL-01 | Users can trigger Wake-on-LAN for any connection profile that has a MAC address configured |
+| FR-WOL-02 | The system sends a magic packet to the configurable broadcast address |
+| FR-WOL-03 | The system waits for host availability after sending the wake packet (configurable timeout) |
+| FR-WOL-04 | The system validates MAC address format before sending |
+
+### FR-SSH — SSH Tunnelling
+
+| ID | Requirement |
+|---|---|
+| FR-SSH-01 | Users can configure an SSH tunnel for any connection profile |
+| FR-SSH-02 | The system creates the tunnel before establishing the remote connection |
+| FR-SSH-03 | Users can view all active tunnels and close individual tunnels |
+| FR-SSH-04 | Tunnel status (active / inactive) is queryable at runtime |
+
+### FR-FT — File Transfer
+
+| ID | Requirement |
+|---|---|
+| FR-FT-01 | Users can initiate file uploads from local machine to remote desktop |
+| FR-FT-02 | Users can initiate file downloads from remote desktop to local machine |
+| FR-FT-03 | Multiple concurrent file transfers are supported |
+| FR-FT-04 | Users can pause, resume, and cancel individual transfers |
+| FR-FT-05 | Transfer history is maintained (status, size, speed, timestamps) |
+| FR-FT-06 | Transfer progress is displayed in real time |
+
+### FR-CB — Clipboard Synchronisation
+
+| ID | Requirement |
+|---|---|
+| FR-CB-01 | Clipboard content is synchronised bidirectionally between local machine and remote session |
+| FR-CB-02 | Supported formats: text, images, file lists |
+| FR-CB-03 | Clipboard history is maintained per session (last 50 items) |
+| FR-CB-04 | Users can enable or disable clipboard sync per connection |
+| FR-CB-05 | Users can browse clipboard history and paste previous entries |
+
+### FR-PM — Performance Monitoring
+
+| ID | Requirement |
+|---|---|
+| FR-PM-01 | The system collects real-time metrics: latency (ms), bandwidth (Mbps), packet loss (%), frame rate (FPS), quality score (0–100), CPU (%), memory (MB), network usage (Mbps) |
+| FR-PM-02 | Connection quality is derived from quality score: VeryPoor (<40), Poor (40–59), Fair (60–74), Good (75–89), Excellent (≥90) |
+| FR-PM-03 | Historical performance data is persisted per connection profile |
+| FR-PM-04 | The system can alert users when thresholds are exceeded (high latency, packet loss, low quality) |
+
+### FR-SR — Session Recording
+
+| ID | Requirement |
+|---|---|
+| FR-SR-01 | Users can start, pause, resume, and stop session recordings |
+| FR-SR-02 | Recordings are stored to local disk with configurable output path |
+| FR-SR-03 | Recording history is maintained (duration, file size, timestamps) |
+| FR-SR-04 | Users can delete recordings from the history view |
+
+### FR-SEC — Security & Credentials
+
+| ID | Requirement |
+|---|---|
+| FR-SEC-01 | Credentials (username, password) are stored in Windows Credential Manager |
+| FR-SEC-02 | The system retrieves and uses stored credentials automatically at connection time |
+| FR-SEC-03 | Users can explicitly save, update, and delete stored credentials |
+| FR-SEC-04 | Connection events are logged for audit purposes |
+| FR-SEC-05 | Session data is never stored in plain-text logs |
+
+### FR-UI — User Interface & Experience
+
+| ID | Requirement |
+|---|---|
+| FR-UI-01 | Users can switch between Light and Dark themes |
+| FR-UI-02 | The layout responds to window resising |
+| FR-UI-03 | All major features are accessible via keyboard shortcuts |
+| FR-UI-04 | The application provides smooth animations and visual feedback |
+| FR-UI-05 | Connection status is indicated with colour-coded indicators |
+| FR-UI-06 | Users can access application-wide settings (defaults, theme, logging) |
+
+### FR-CFG — Settings & Configuration
+
+| ID | Requirement |
+|---|---|
+| FR-CFG-01 | Default connection settings (port, colour depth, resolution) are configurable globally |
+| FR-CFG-02 | Maximum concurrent connections is configurable (default: 10) |
+| FR-CFG-03 | Connection timeout is configurable (default: 30 000 ms) |
+| FR-CFG-04 | Theme preference (Light, Dark, System) is persisted |
+| FR-CFG-05 | Logging level is configurable per category |
+| FR-CFG-06 | Auto-update and update-check frequency is configurable |
 
 ---
 
@@ -346,87 +394,162 @@ The MVP focuses on delivering a polished, modern RDP client with essential featu
 
 ### Performance
 
-**NFR1:** Application startup time must be under 2 seconds on systems with SSD and 8GB+ RAM
-
-**NFR2:** Memory footprint must not exceed 150MB for typical usage (single active connection)
-
-**NFR3:** CPU usage must remain under 5% when idle (no active connections)
-
-**NFR4:** Connection establishment time must be under 3 seconds for local network connections
-
-**NFR5:** Frame rate must maintain at least 30 FPS for remote desktop rendering on standard hardware
-
-**NFR6:** File transfer must utilize available bandwidth efficiently (minimum 80% utilization on stable connections)
-
-**NFR7:** Clipboard synchronization latency must be under 100ms for text content
-
-**NFR8:** UI responsiveness must maintain 60 FPS during window resizing and animations
-
-**NFR9:** GPU acceleration must be utilized when available (90%+ of compatible systems)
-
-**NFR10:** Application must remain responsive during background operations (file transfers, updates)
+| ID | Requirement |
+|---|---|
+| NFR-P-01 | Application startup in < 2 s on SSD hardware with ≥ 8 GB RAM |
+| NFR-P-02 | Memory footprint ≤ 150 MB for a single active connection |
+| NFR-P-03 | CPU usage ≤ 5 % when idle (no active connections) |
+| NFR-P-04 | Connection establishment ≤ 3 s on LAN |
+| NFR-P-05 | RDP frame rate ≥ 30 FPS on standard hardware |
+| NFR-P-06 | Clipboard sync latency ≤ 100 ms for text |
+| NFR-P-07 | UI animations at 60 FPS |
+| NFR-P-08 | Application remains responsive during background file transfers |
+| NFR-P-09 | File transfer bandwidth utilisation ≥ 80 % on stable connections |
 
 ### Security
 
-**NFR11:** All credentials must be encrypted at rest using Windows Credential Manager or equivalent secure storage
-
-**NFR12:** All network communications must support TLS 1.2 or higher encryption
-
-**NFR13:** Application must validate SSL/TLS certificates and warn users of invalid certificates
-
-**NFR14:** Session data must not be stored in plain text logs
-
-**NFR15:** Application must follow Windows security best practices and pass security audits
-
-**NFR16:** Credential storage must be protected against unauthorized access (Windows security model)
-
-**NFR17:** Application must support certificate pinning for enhanced security
-
-**NFR18:** Audit logs must be tamper-evident and include timestamps and user identification
+| ID | Requirement |
+|---|---|
+| NFR-S-01 | All credentials encrypted at rest via Windows Credential Manager |
+| NFR-S-02 | All network communications use TLS 1.2 or higher |
+| NFR-S-03 | Invalid SSL/TLS certificates trigger a user warning |
+| NFR-S-04 | Session data not stored in plain-text logs |
+| NFR-S-05 | Application follows Windows security best practices |
+| NFR-S-06 | Audit logs are timestamped, include user identification, and are tamper-evident |
 
 ### Scalability
 
-**NFR19:** Application must support at least 100 saved connection profiles without performance degradation
-
-**NFR20:** Application must handle at least 10 simultaneous active connections
-
-**NFR21:** File transfer must support files up to 10GB in size
-
-**NFR22:** Session recording must support recordings up to 8 hours in length
-
-**NFR23:** Application must handle network interruptions gracefully without data loss
+| ID | Requirement |
+|---|---|
+| NFR-SC-01 | ≥ 100 saved connection profiles without performance degradation |
+| NFR-SC-02 | ≥ 10 simultaneous active connections |
+| NFR-SC-03 | File transfers support files up to 10 GB |
+| NFR-SC-04 | Session recording up to 8 hours |
+| NFR-SC-05 | Graceful handling of network interruptions without data loss |
 
 ### Accessibility
 
-**NFR24:** Application must support Windows high contrast mode
+| ID | Requirement |
+|---|---|
+| NFR-A-01 | Compatible with Windows high contrast mode |
+| NFR-A-02 | Compatible with screen readers (Narrator, NVDA, JAWS) |
+| NFR-A-03 | All UI elements keyboard-accessible |
+| NFR-A-04 | Supports Windows accessibility settings (text scaling, colour filters) |
+| NFR-A-05 | Colour contrast ratios meet WCAG 2.1 AA standards |
 
-**NFR25:** Application must be compatible with screen readers (Narrator, NVDA, JAWS)
+### Reliability & Maintainability
 
-**NFR26:** All UI elements must be keyboard accessible
-
-**NFR27:** Application must support Windows accessibility settings (text scaling, color filters)
-
-**NFR28:** Color contrast ratios must meet WCAG 2.1 AA standards
+| ID | Requirement |
+|---|---|
+| NFR-R-01 | Connection success rate ≥ 99.5 % with auto-reconnect |
+| NFR-R-02 | Application logs all errors with stack traces for diagnostics |
+| NFR-R-03 | Log files rotate daily and are retained for 30 days |
+| NFR-R-04 | Database migrations are applied automatically on startup |
+| NFR-R-05 | Unit test coverage ≥ 70 % for service layer |
 
 ### Integration
 
-**NFR29:** Application must integrate with Windows Credential Manager for credential storage
-
-**NFR30:** Application must support standard RDP file format (.rdp) for import/export
-
-**NFR31:** Application must integrate with Windows File Explorer for drag-and-drop operations
-
-**NFR32:** Application must support Windows notification system for connection status updates
-
-**NFR33:** Application must integrate with Windows Print Spooler for printer redirection
-
-**NFR34:** Application must support command-line interface for automation and scripting
-
-**NFR35:** Application must provide REST API for integration with third-party tools (post-MVP)
+| ID | Requirement |
+|---|---|
+| NFR-I-01 | Import/export compatibility with standard `.rdp` file format |
+| NFR-I-02 | Integration with Windows File Explorer for drag-and-drop |
+| NFR-I-03 | Integration with Windows Notification System |
+| NFR-I-04 | Integration with Windows Print Spooler for printer redirection (growth) |
+| NFR-I-05 | REST API for third-party integration (growth) |
 
 ---
 
-_This PRD captures the essence of Aivana_RDP_WPF - a modern, feature-rich RDP client that transforms remote desktop management through superior UI/UX, comprehensive features, and performance optimization._
+## Technical Architecture Overview
 
-_Created through collaborative discovery between BMad and AI facilitator._
+### Technology Stack
 
+| Layer | Technology |
+|---|---|
+| Runtime | .NET 8.0 |
+| UI Framework | WPF (Windows Presentation Foundation) |
+| UI Pattern | MVVM with CommunityToolkit.Mvvm 8.2.2 |
+| Database | SQLite via Entity Framework Core 8.0 |
+| RDP Client | MSTSC ActiveX Control (mstscax.dll / MSTSCLib) |
+| Credential Storage | Windows Credential Manager API |
+| Dependency Injection | Microsoft.Extensions.DependencyInjection |
+| Logging | Microsoft.Extensions.Logging (Console + File) |
+| Configuration | Microsoft.Extensions.Configuration (JSON) |
+| Protocols | RDP (MSTSC), SSH, VNC (via protocol abstraction layer) |
+
+### Key Architectural Decisions
+
+1. **MVVM pattern** enforces separation of UI and business logic — Views contain zero business logic.
+2. **Service layer with interfaces** (`IXxxService`) allows unit testing through mocking and future implementation swaps.
+3. **Protocol abstraction** (`IRemoteProtocol`, `IProtocolFactory`, `ProtocolType`) enables adding new protocols without changing core connection logic.
+4. **Workflow engine** implements a declarative step-based automation model with typed step parameters, conditional execution, loops, and parallel steps.
+5. **SQLite** for local-first persistence — no server dependency, auto-migrated via EF Core.
+
+### Project Structure
+
+```
+Aivana_RDP_WPF/
+├── Models/             # EF Core entities & domain models
+├── ViewModels/         # MVVM ViewModels (CommunityToolkit.Mvvm)
+├── Views/              # WPF XAML views
+├── Services/           # Business logic (interfaces + implementations)
+├── Infrastructure/
+│   ├── Database/       # ApplicationDbContext, migrations factory
+│   ├── Rdp/            # RdpClientWrapper (MSTSC ActiveX)
+│   ├── Credentials/    # WindowsCredentialManager
+│   ├── Logging/        # File logger
+│   └── Protocols/      # Protocol abstraction (RDP, SSH, VNC)
+├── Helpers/            # Utility classes (validation, file, network, tags)
+├── Converters/         # WPF value converters
+├── Commands/           # RelayCommand, AsyncRelayCommand
+├── Resources/
+│   ├── Styles/         # FluentDesignStyles.xaml
+│   └── Themes/         # LightTheme.xaml, DarkTheme.xaml
+└── Migrations/         # EF Core database migrations
+```
+
+---
+
+## Roadmap
+
+### v1.0 (Released — 2025-11-27)
+- ✅ Multi-protocol connectivity (RDP, SSH, VNC)
+- ✅ Connection profile management (CRUD, groups, tags, favourites)
+- ✅ Wake-on-LAN
+- ✅ SSH Tunnelling
+- ✅ Workflow Engine
+- ✅ Workspace tab management with layout persistence
+- ✅ Quick Connect
+- ✅ File transfer (simulation mode)
+- ✅ Clipboard synchronisation (basic)
+- ✅ Performance monitoring (local metrics)
+- ✅ Session recording (placeholder files)
+- ✅ Fluent Design UI (Light/Dark themes)
+- ✅ Import/Export (RDP, JSON, CSV)
+- ✅ SQLite persistence with EF Core
+- ✅ Structured logging
+
+### v1.1 (Near-term)
+- [ ] Full file transfer via RDP Virtual Channels
+- [ ] Full clipboard format preservation (binary formats, files)
+- [ ] Session recording to video (Windows Media Foundation)
+- [ ] Enhanced performance dashboard with historical graphs
+- [ ] Multi-monitor RDP configuration UI
+
+### v1.2 (Mid-term)
+- [ ] REST API for third-party integration
+- [ ] PowerShell CLI integration
+- [ ] Advanced workflow trigger types (file system, hotkey)
+- [ ] Password manager integration (Bitwarden, 1Password)
+- [ ] Accessibility improvements (full screen-reader compliance)
+
+### v2.0 (Long-term)
+- [ ] Plugin/extension SDK and marketplace
+- [ ] Cloud sync for connection profiles
+- [ ] Collaboration features (view-only mode, session sharing)
+- [ ] AI-powered adaptive quality and troubleshooting suggestions
+- [ ] MFA and hardware key support (YubiKey, FIDO2)
+
+---
+
+*PRD v2.0 — based on analysis of the implemented codebase as of 2026-04-15.*  
+*Supersedes PRD v1.0 (2025-11-26).*
