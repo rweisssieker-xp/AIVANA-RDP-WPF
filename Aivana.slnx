@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Aivana.App/Aivana.App.fsproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Aivana.App.Tests/Aivana.App.Tests.fsproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,176 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:Aivana.App.ViewModels"
+        xmlns:models="using:Aivana.App"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1180" d:DesignHeight="760"
+        x:Class="Aivana.App.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Icon="/Assets/avalonia-logo.ico"
+        Title="Aivana"
+        Width="1180"
+        Height="760"
+        MinWidth="980"
+        MinHeight="640"
+        Background="#F5F7FA">
+
+    <Design.DataContext>
+        <vm:MainWindowViewModel/>
+    </Design.DataContext>
+
+    <Grid ColumnDefinitions="248,*">
+        <Border Grid.Column="0" Background="#111827" Padding="18">
+            <Grid RowDefinitions="Auto,*,Auto">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="Aivana" Foreground="White" FontSize="26" FontWeight="SemiBold"/>
+                    <TextBlock Text="Remote access console" Foreground="#9CA3AF" FontSize="13"/>
+                </StackPanel>
+
+                <ListBox Grid.Row="1"
+                         Margin="0,28,0,0"
+                         Background="Transparent"
+                         BorderThickness="0"
+                         ItemsSource="{Binding NavigationItems}"
+                         SelectedItem="{Binding SelectedSection}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding}" Foreground="#F9FAFB" FontSize="15" Margin="4,8"/>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <Border Grid.Row="2" Background="#1F2937" CornerRadius="8" Padding="12">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Session status" Foreground="#D1D5DB" FontWeight="SemiBold"/>
+                        <TextBlock Text="Ready for quick connect" Foreground="#9CA3AF" FontSize="12"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+
+        <ScrollViewer Grid.Column="1">
+            <StackPanel Margin="28" Spacing="20">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel>
+                        <TextBlock Text="{Binding SelectedSection}" FontSize="30" FontWeight="SemiBold" Foreground="#111827"/>
+                        <TextBlock Text="Manage remote connections, health, and workspace defaults." Foreground="#6B7280"/>
+                    </StackPanel>
+                    <Border Grid.Column="1" Background="White" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="14,10">
+                        <StackPanel>
+                            <TextBlock Text="{Binding Summary.TotalConnections, StringFormat='{}{0} profiles'}" Foreground="#111827" FontWeight="SemiBold"/>
+                            <TextBlock Text="{Binding Summary.OnlineConnections, StringFormat='{}{0} online'}" Foreground="#059669" FontSize="12"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <Grid ColumnDefinitions="2*,*" IsVisible="{Binding IsConnectionsSelected}">
+                    <StackPanel Grid.Column="0" Spacing="12" Margin="0,0,16,0">
+                        <Border Background="White" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="14">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBox Watermark="Search by name, host, group, or tag"
+                                         Text="{Binding SearchText}"
+                                         MinHeight="38"/>
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding VisibleConnectionCount, StringFormat='{}{0} shown'}"
+                                           Foreground="#6B7280"
+                                           VerticalAlignment="Center"
+                                           Margin="12,0,0,0"/>
+                            </Grid>
+                        </Border>
+
+                        <ItemsControl ItemsSource="{Binding FilteredConnections}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:ConnectionProfile">
+                                    <Border Background="White" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="16" Margin="0,0,0,10">
+                                        <Grid ColumnDefinitions="*,Auto" RowDefinitions="Auto,Auto,Auto">
+                                            <StackPanel Spacing="3">
+                                                <TextBlock Text="{Binding Name}" FontSize="17" FontWeight="SemiBold" Foreground="#111827"/>
+                                                <TextBlock Text="{Binding Host}" Foreground="#4B5563"/>
+                                            </StackPanel>
+                                            <TextBlock Grid.Column="1"
+                                                       Text="{Binding Protocol}"
+                                                       Foreground="#2563EB"
+                                                       FontWeight="SemiBold"/>
+                                            <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="10" Margin="0,10,0,0">
+                                                <TextBlock Text="{Binding Port, StringFormat='Port {0}'}" Foreground="#6B7280"/>
+                                                <TextBlock Text="{Binding Username}" Foreground="#6B7280"/>
+                                                <TextBlock Text="{Binding Group}" Foreground="#6B7280"/>
+                                            </StackPanel>
+                                            <ItemsControl Grid.Row="2" ItemsSource="{Binding Tags}" Margin="0,10,0,0">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <StackPanel Orientation="Horizontal" Spacing="6"/>
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Background="#EEF2FF" CornerRadius="6" Padding="8,3">
+                                                            <TextBlock Text="{Binding}" Foreground="#3730A3" FontSize="12"/>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <StackPanel Grid.Column="1" Spacing="14">
+                        <Border Background="White" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="16">
+                            <StackPanel Spacing="10">
+                                <TextBlock Text="Quick connect" FontSize="18" FontWeight="SemiBold" Foreground="#111827"/>
+                                <TextBox Watermark="Host" Text="{Binding QuickConnectHost}"/>
+                                <ComboBox SelectedItem="{Binding QuickConnectProtocol}">
+                                    <ComboBoxItem Content="RDP"/>
+                                    <ComboBoxItem Content="SSH"/>
+                                    <ComboBoxItem Content="VNC"/>
+                                </ComboBox>
+                                <Button Content="Connect" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                            </StackPanel>
+                        </Border>
+
+                        <Border Background="#ECFDF5" BorderBrush="#A7F3D0" BorderThickness="1" CornerRadius="8" Padding="16">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="Operational focus" FontWeight="SemiBold" Foreground="#065F46"/>
+                                <TextBlock Text="Profiles are local-first and ready for protocol-specific connection services." TextWrapping="Wrap" Foreground="#047857"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+
+                <Grid ColumnDefinitions="*,*,*" IsVisible="{Binding IsHealthSelected}">
+                    <Border Background="White" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="18" Margin="0,0,12,0">
+                        <StackPanel>
+                            <TextBlock Text="{Binding Summary.OnlineConnections}" FontSize="34" FontWeight="SemiBold" Foreground="#059669"/>
+                            <TextBlock Text="Online" Foreground="#4B5563"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="1" Background="White" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="18" Margin="0,0,12,0">
+                        <StackPanel>
+                            <TextBlock Text="{Binding Summary.WarningConnections}" FontSize="34" FontWeight="SemiBold" Foreground="#D97706"/>
+                            <TextBlock Text="Warnings" Foreground="#4B5563"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Grid.Column="2" Background="White" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="18">
+                        <StackPanel>
+                            <TextBlock Text="{Binding Summary.OfflineConnections}" FontSize="34" FontWeight="SemiBold" Foreground="#DC2626"/>
+                            <TextBlock Text="Offline" Foreground="#4B5563"/>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <Border Background="White" BorderBrush="#E5E7EB" BorderThickness="1" CornerRadius="8" Padding="18" IsVisible="{Binding IsSettingsSelected}">
+                    <StackPanel Spacing="12">
+                        <TextBlock Text="Workspace defaults" FontSize="20" FontWeight="SemiBold" Foreground="#111827"/>
+                        <CheckBox Content="Start sessions in full screen" IsChecked="False"/>
+                        <CheckBox Content="Remember last selected protocol" IsChecked="True"/>
+                        <CheckBox Content="Show health warnings before connecting" IsChecked="True"/>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</Window>
