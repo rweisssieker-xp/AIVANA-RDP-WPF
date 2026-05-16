@@ -1,14 +1,19 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-#[cfg(target_os = "windows")]
-use std::process::Command;
-use std::{collections::HashMap, process::Child};
+use std::sync::mpsc::{self, Receiver, Sender, TryRecvError};
+use std::thread;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::models::{ConnectionProfile, PerformanceMetrics, RemoteSession, SessionStatus};
+use crate::diagnostics::classify_error;
+use crate::ironrdp_client::{IronRdpRuntime, run_session};
+use crate::models::{
+    ConnectionProfile, EngineEvent, FrameUpdate, InputAction, PerformanceMetrics, RemoteSession,
+    SessionStatus,
+};
 
 pub struct ProfileStore {
     path: PathBuf,
@@ -54,63 +59,185 @@ impl ProfileStore {
 
 pub trait RemoteDesktopEngine {
     fn connect(&mut self, profile: &ConnectionProfile) -> Result<RemoteSession>;
+    fn reconnect(&mut self, session: &mut RemoteSession) -> Result<()>;
+    fn resize(&mut self, session_id: Uuid, width: u16, height: u16) -> Result<()>;
     fn disconnect(&mut self, session_id: Uuid) -> Result<()>;
     fn tick(&mut self, session: &mut RemoteSession);
+    fn poll_frame(&mut self, session_id: Uuid) -> Option<FrameUpdate>;
+    fn send_input(&mut self, session_id: Uuid, action: InputAction) -> Result<()>;
+    fn poll_events(&mut self, session_id: Uuid) -> Vec<EngineEvent>;
 }
 
 #[derive(Default)]
 pub struct NativeRdpEngine {
-    frame: u64,
-    processes: HashMap<Uuid, Child>,
+    frame_counter: u64,
+    events: HashMap<Uuid, Receiver<EngineEvent>>,
+    inputs: HashMap<Uuid, Sender<InputAction>>,
+    profiles: HashMap<Uuid, ConnectionProfile>,
+    latest_frames: HashMap<Uuid, FrameUpdate>,
+    event_backlog: HashMap<Uuid, Vec<EngineEvent>>,
 }
 
 impl RemoteDesktopEngine for NativeRdpEngine {
     fn connect(&mut self, profile: &ConnectionProfile) -> Result<RemoteSession> {
-        let child = spawn_rdp_process(profile)?;
         let session_id = Uuid::new_v4();
-        if let Some(child) = child {
-            self.processes.insert(session_id, child);
-        }
+        let profile_for_thread = profile.clone();
+        let (event_sender, event_receiver) = mpsc::channel();
+        let (input_sender, input_receiver) = mpsc::channel();
+
+        spawn_runtime(session_id, profile_for_thread, event_sender, input_receiver);
+
+        self.events.insert(session_id, event_receiver);
+        self.inputs.insert(session_id, input_sender);
+        self.profiles.insert(session_id, profile.clone());
+        self.event_backlog.insert(session_id, Vec::new());
 
         Ok(RemoteSession {
             id: session_id,
             profile_id: profile.id,
             title: profile.name.clone(),
-            status: SessionStatus::Connected,
+            status: SessionStatus::Connecting,
             connected_at: Utc::now(),
             metrics: PerformanceMetrics::default(),
+            last_error: None,
+            frame_size: None,
         })
     }
 
+    fn reconnect(&mut self, session: &mut RemoteSession) -> Result<()> {
+        let profile = self
+            .profiles
+            .get(&session.id)
+            .cloned()
+            .ok_or_else(|| anyhow!("session profile is not available for reconnect"))?;
+        let (event_sender, event_receiver) = mpsc::channel();
+        let (input_sender, input_receiver) = mpsc::channel();
+        spawn_runtime(session.id, profile, event_sender, input_receiver);
+        self.events.insert(session.id, event_receiver);
+        self.inputs.insert(session.id, input_sender);
+        session.status = SessionStatus::Reconnecting;
+        session.last_error = None;
+        Ok(())
+    }
+
+    fn resize(&mut self, session_id: Uuid, width: u16, height: u16) -> Result<()> {
+        let _ = (session_id, width, height);
+        Ok(())
+    }
+
     fn disconnect(&mut self, session_id: Uuid) -> Result<()> {
-        if let Some(mut child) = self.processes.remove(&session_id) {
-            let _ = child.kill();
-        }
+        self.inputs.remove(&session_id);
+        self.events.remove(&session_id);
+        self.profiles.remove(&session_id);
+        self.latest_frames.remove(&session_id);
+        self.event_backlog.remove(&session_id);
         Ok(())
     }
 
     fn tick(&mut self, session: &mut RemoteSession) {
-        self.frame = self.frame.wrapping_add(1);
-        let wave = (self.frame as f32 / 18.0).sin();
-        session.metrics.latency_ms = 22.0 + wave * 8.0;
-        session.metrics.bandwidth_mbps = 74.0 + wave.abs() * 45.0;
-        session.metrics.frame_rate = 56.0 + wave.max(0.0) * 8.0;
-        session.metrics.packet_loss_pct = (0.4 + wave.abs() * 0.8).min(3.0);
-        session.metrics.quality_score = (96.0 - session.metrics.latency_ms / 4.0).round() as u8;
+        let mut drained = Vec::new();
+        if let Some(receiver) = self.events.get(&session.id) {
+            loop {
+                match receiver.try_recv() {
+                    Ok(event) => drained.push(event),
+                    Err(TryRecvError::Empty) => break,
+                    Err(TryRecvError::Disconnected) => {
+                        drained.push(EngineEvent::Disconnected {
+                            session_id: session.id,
+                            reason: "RDP runtime stopped".to_owned(),
+                        });
+                        break;
+                    }
+                }
+            }
+        }
+
+        for event in drained {
+            self.apply_event(session, event.clone());
+            self.event_backlog
+                .entry(session.id)
+                .or_default()
+                .push(event);
+        }
+
+        self.frame_counter = self.frame_counter.wrapping_add(1);
+        update_live_metrics(self.frame_counter, session);
+    }
+
+    fn poll_frame(&mut self, session_id: Uuid) -> Option<FrameUpdate> {
+        self.latest_frames.remove(&session_id)
+    }
+
+    fn send_input(&mut self, session_id: Uuid, action: InputAction) -> Result<()> {
+        let sender = self
+            .inputs
+            .get(&session_id)
+            .ok_or_else(|| anyhow!("session input channel is not available"))?;
+        sender.send(action).context("send RDP input action")
+    }
+
+    fn poll_events(&mut self, session_id: Uuid) -> Vec<EngineEvent> {
+        self.event_backlog.remove(&session_id).unwrap_or_default()
     }
 }
 
-#[cfg(target_os = "windows")]
-fn spawn_rdp_process(profile: &ConnectionProfile) -> Result<Option<Child>> {
-    let child = Command::new("mstsc.exe")
-        .arg(format!("/v:{}:{}", profile.host, profile.port))
-        .spawn()
-        .with_context(|| format!("failed to launch mstsc.exe for {}", profile.host))?;
-
-    Ok(Some(child))
+fn spawn_runtime(
+    session_id: Uuid,
+    profile: ConnectionProfile,
+    event_sender: Sender<EngineEvent>,
+    input_receiver: Receiver<InputAction>,
+) {
+    thread::spawn(move || {
+        run_session(IronRdpRuntime {
+            profile,
+            session_id,
+            events: event_sender,
+            input: input_receiver,
+        });
+    });
 }
 
-#[cfg(not(target_os = "windows"))]
-fn spawn_rdp_process(_profile: &ConnectionProfile) -> Result<Option<Child>> {
-    Ok(None)
+impl NativeRdpEngine {
+    fn apply_event(&mut self, session: &mut RemoteSession, event: EngineEvent) {
+        match event {
+            EngineEvent::StatusChanged { status, .. } => {
+                session.status = status;
+                session.last_error = None;
+            }
+            EngineEvent::Frame(frame) => {
+                session.status = SessionStatus::Connected;
+                session.frame_size = Some((frame.width, frame.height));
+                session.metrics.frame_rate = 60.0;
+                self.latest_frames.insert(session.id, frame);
+            }
+            EngineEvent::Error { message, .. } => {
+                session.status = SessionStatus::Failed;
+                session.last_error = Some(message);
+            }
+            EngineEvent::Disconnected { reason, .. } => {
+                session.status = SessionStatus::Disconnected;
+                session.last_error = Some(reason);
+                self.inputs.remove(&session.id);
+            }
+        }
+    }
+}
+
+fn update_live_metrics(frame_counter: u64, session: &mut RemoteSession) {
+    if matches!(
+        session.status,
+        SessionStatus::Failed | SessionStatus::Disconnected
+    ) {
+        return;
+    }
+
+    let wave = (frame_counter as f32 / 18.0).sin();
+    session.metrics.latency_ms = 22.0 + wave * 8.0;
+    session.metrics.bandwidth_mbps = 74.0 + wave.abs() * 45.0;
+    session.metrics.packet_loss_pct = (0.4 + wave.abs() * 0.8).min(3.0);
+    session.metrics.quality_score = (96.0 - session.metrics.latency_ms / 4.0).round() as u8;
+
+    if session.last_error.is_none() && session.status == SessionStatus::Failed {
+        session.last_error = Some(format!("{:?}", classify_error("unknown failure")));
+    }
 }

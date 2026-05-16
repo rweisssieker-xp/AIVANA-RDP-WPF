@@ -1,6 +1,17 @@
+mod ai;
 mod app;
+mod certificate;
+mod computer_use;
+mod diagnostics;
+mod ironrdp_client;
+mod memory;
 mod models;
+mod policy;
+mod runbook;
+mod security;
 mod services;
+mod timeline;
+mod workspace;
 
 use app::AivanaApp;
 

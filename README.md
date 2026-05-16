@@ -1,26 +1,32 @@
 # Aivana Rust RDP Client
 
-Native Rust desktop application for managing remote desktop connection profiles and sessions.
+Native Rust desktop application for RDP operations, diagnostics, incident evidence, and guarded KI Computer Use.
 
-The previous WPF/.NET project has been removed. The app now builds as a Rust binary using `eframe`/`egui` for a modern native GUI without WebView or Tauri.
+The app builds as a single Rust desktop binary with `eframe`/`egui`. There is no external Windows RDP launcher, no WebView shell, and no browser runtime.
 
 ## Current Capabilities
 
-- Native desktop shell with modern sidebar navigation
-- Connection profile list, search, editor, groups, tags, favorites
-- Persistent profile storage in the user data directory
-- Session dashboard with active session list and live metrics panel
-- Trait-based remote desktop backend abstraction
-- Windows RDP launch adapter using `mstsc.exe`
-
-## Important Status
-
-The GUI and application structure are now Rust-native. The current RDP adapter launches `mstsc.exe` on Windows from Rust and tracks the session in the native UI. The low-level protocol remains isolated behind a Rust trait, so a deeper backend such as IronRDP or FreeRDP bindings can replace the launcher without changing the profile editor or session dashboard.
+- Native desktop shell with sidebar navigation, profiles, sessions, settings, and a live RDP viewport.
+- Connection profile list, search, editor, groups, tags, favorites, and JSON persistence.
+- Passwords are skipped from profile JSON; the credential boundary stores only `credential_id` on profiles.
+- Long-running IronRDP session thread with state events, framebuffer updates, disconnect/error handling, and native input channel.
+- egui texture rendering for decoded IronRDP framebuffer frames.
+- Pointer move, click, scroll, and typed text forwarding into the RDP input path.
+- Local preflight diagnostics for DNS/TCP/credential readiness.
+- Local KI diagnosis from deterministic findings and session evidence.
+- Certificate trust gate with local fingerprint status and KI risk explanation.
+- Timeline and Blackbox evidence store with redaction, Markdown incident export, and JSON evidence export.
+- Guarded Computer Use flow that observes native framebuffers, detects basic screen state, plans actions, queues approvals, and traces observations.
+- Approval Center for elevated-risk KI actions.
+- Runbook engine with first diagnostic/evidence runbooks and Evidence Mode.
+- Workspace cockpit with host memory, runbook inventory, open approvals, and recommended next step.
+- Proactive KI USP actions: Why did this fail, What changed, Safe next action, Evidence mode, Ticket in 30 seconds, Runbook recommendation.
 
 ## Requirements
 
 - Rust 1.95 or newer
 - Windows, Linux, or macOS supported by `eframe`
+- A reachable RDP endpoint for real-session testing
 
 ## Build
 
@@ -38,12 +44,28 @@ cargo run
 
 ```text
 src/
-  main.rs       App entry point
-  app.rs        Native egui desktop UI
-  models.rs     Profiles, sessions, metrics
-  services.rs   Profile persistence and RDP backend abstraction
+  main.rs            Native app bootstrap
+  app.rs             egui desktop UI, framebuffer viewport, diagnostics panels
+  ironrdp_client.rs  Native IronRDP connection, active-stage loop, frames, input PDUs
+  services.rs        Profile persistence and RemoteDesktopEngine runtime channels
+  models.rs          Public models and interface payloads
+  security.rs        Credential boundary and redaction
+  certificate.rs     Certificate trust classification and local fingerprint decisions
+  diagnostics.rs     Preflight and typed error classification
+  ai.rs              Local and optional-provider KI abstraction
+  computer_use.rs    Frame observation, action planning, policy-gated execution
+  policy.rs          Computer Use safety decisions
+  runbook.rs         Local diagnostic and evidence runbooks
+  memory.rs          Redacted host and workspace memory
+  timeline.rs        Session event audit and incident export
+  workspace.rs       Workspace cockpit model
 ```
 
-## Next Engineering Step
+## Verification
 
-Replace `NativeRdpEngine` in `src/services.rs` with an embedded RDP backend if the remote desktop viewport must render inside the Aivana window instead of launching the Windows RDP client.
+```powershell
+cargo fmt
+cargo check
+cargo test
+cargo build
+```
