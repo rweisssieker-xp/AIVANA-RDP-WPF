@@ -1,25 +1,17 @@
-# Build artifacts
-[Bb]in/
-[Oo]bj/
-# Visual Studio files
-*.user
-*.suo
-*.userosscache
-*.sln.docstates
-# Logs
-*.log
-# DLLs and PDBs
-*.dll
-*.pdb
-# Rider and VSCode
+# Rust build artifacts
+/target/
+
+# Editor state
 .idea/
 .vscode/
-# Publish
-publish/
-# Local test results
-TestResults/
+*.swp
+*.swo
 
-# Ignore hidden directories (allow .git)
-.[!.]*/
-..?*/
-!.git/
+# Logs and local output
+*.log
+publish/
+dist/
+
+# Local OS files
+Thumbs.db
+Desktop.ini
