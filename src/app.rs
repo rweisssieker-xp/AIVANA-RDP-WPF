@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, hash_map::Entry};
 
 use chrono::Utc;
 use eframe::egui::{
@@ -59,6 +59,12 @@ enum View {
     Settings,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum RemoteViewMode {
+    Fit,
+    ActualSize,
+}
+
 pub struct AivanaApp {
     profiles: Vec<ConnectionProfile>,
     sessions: Vec<RemoteSession>,
@@ -88,6 +94,8 @@ pub struct AivanaApp {
     computer_use_status: String,
     certificate_notice: String,
     session_inspector_open: bool,
+    remote_view_mode: RemoteViewMode,
+    remote_fullscreen: bool,
 }
 
 impl AivanaApp {
@@ -162,6 +170,8 @@ impl AivanaApp {
             computer_use_status: "Computer Use wartet auf einen Framebuffer.".to_owned(),
             certificate_notice: "Certificate Trust wartet auf einen Host.".to_owned(),
             session_inspector_open: false,
+            remote_view_mode: RemoteViewMode::Fit,
+            remote_fullscreen: false,
         }
     }
 
@@ -557,6 +567,7 @@ impl AivanaApp {
 impl eframe::App for AivanaApp {
     fn ui(&mut self, ui: &mut Ui, _frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        let mut received_frame = false;
 
         for session in &mut self.sessions {
             self.engine.tick(session);
@@ -578,17 +589,20 @@ impl eframe::App for AivanaApp {
                     [usize::from(frame.width), usize::from(frame.height)],
                     &frame.pixels_rgba,
                 );
-                self.textures
-                    .entry(session.id)
-                    .and_modify(|texture| texture.set(image.clone(), TextureOptions::LINEAR))
-                    .or_insert_with(|| {
-                        ctx.load_texture(
+                match self.textures.entry(session.id) {
+                    Entry::Occupied(mut texture) => {
+                        texture.get_mut().set(image, TextureOptions::NEAREST);
+                    }
+                    Entry::Vacant(slot) => {
+                        slot.insert(ctx.load_texture(
                             format!("rdp-frame-{}", session.id),
                             image,
-                            TextureOptions::LINEAR,
-                        )
-                    });
+                            TextureOptions::NEAREST,
+                        ));
+                    }
+                }
                 self.latest_frames.insert(session.id, frame);
+                received_frame = true;
             }
         }
 
@@ -700,7 +714,20 @@ impl eframe::App for AivanaApp {
                 }
             });
 
-        ctx.request_repaint_after(std::time::Duration::from_millis(250));
+        if received_frame {
+            ctx.request_repaint();
+        }
+        let has_live_session = self.sessions.iter().any(|session| {
+            !matches!(
+                session.status,
+                SessionStatus::Disconnected | SessionStatus::Failed
+            )
+        });
+        ctx.request_repaint_after(std::time::Duration::from_millis(if has_live_session {
+            16
+        } else {
+            250
+        }));
     }
 }
 
@@ -940,9 +967,17 @@ impl AivanaApp {
     }
 
     fn session_tabs(&mut self, ui: &mut Ui) {
+        self.session_tabs_with_fill(ui, tw::WHITE, tw::SLATE_200, false);
+    }
+
+    fn workspace_session_tabs(&mut self, ui: &mut Ui) {
+        self.session_tabs_with_fill(ui, tw::SLATE_900, tw::SLATE_800, true);
+    }
+
+    fn session_tabs_with_fill(&mut self, ui: &mut Ui, fill: Color32, stroke: Color32, dark: bool) {
         Frame::new()
-            .fill(tw::WHITE)
-            .stroke(Stroke::new(1.0, tw::SLATE_200))
+            .fill(fill)
+            .stroke(Stroke::new(1.0, stroke))
             .corner_radius(CornerRadius::same(6))
             .inner_margin(Margin::symmetric(8, 6))
             .show(ui, |ui| {
@@ -959,13 +994,35 @@ impl AivanaApp {
                             .find(|session| session.id == id)
                             .expect("session id must exist");
                         let selected = self.selected_session == Some(session.id);
-                        if ui
-                            .selectable_label(
-                                selected,
-                                format!("{}  {}", session.title, session.status.label()),
+                        let fill = if selected {
+                            tw::BLUE_600
+                        } else if dark {
+                            tw::SLATE_800
+                        } else {
+                            tw::SLATE_50
+                        };
+                        let text = if selected || dark {
+                            tw::WHITE
+                        } else {
+                            tw::SLATE_800
+                        };
+                        let response = ui.add(
+                            egui::Button::new(
+                                RichText::new(format!(
+                                    "{}  {}",
+                                    session.title,
+                                    session.status.label()
+                                ))
+                                .size(12.0)
+                                .color(text),
                             )
-                            .clicked()
-                        {
+                            .fill(fill)
+                            .stroke(Stroke::new(
+                                1.0,
+                                if selected { tw::BLUE_700 } else { stroke },
+                            )),
+                        );
+                        if response.clicked() {
                             self.selected_session = Some(session.id);
                         }
                     }
@@ -1023,6 +1080,8 @@ impl AivanaApp {
                 ui.set_min_height(ui.available_height().clamp(320.0, 1200.0));
                 if let Some(session) = self.selected_session().cloned() {
                     let session_id = session.id;
+                    self.workspace_session_tabs(ui);
+                    ui.add_space(6.0);
                     ui.horizontal(|ui| {
                         ui.label(
                             RichText::new(&session.title)
@@ -1044,6 +1103,35 @@ impl AivanaApp {
                                 }),
                         );
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            if ui
+                                .selectable_label(self.remote_fullscreen, "Fullscreen")
+                                .clicked()
+                            {
+                                self.remote_fullscreen = !self.remote_fullscreen;
+                                ui.ctx()
+                                    .send_viewport_cmd(egui::ViewportCommand::Fullscreen(
+                                        self.remote_fullscreen,
+                                    ));
+                            }
+                            if ui
+                                .selectable_label(
+                                    self.remote_view_mode == RemoteViewMode::ActualSize,
+                                    "100%",
+                                )
+                                .clicked()
+                            {
+                                self.remote_view_mode = RemoteViewMode::ActualSize;
+                            }
+                            if ui
+                                .selectable_label(
+                                    self.remote_view_mode == RemoteViewMode::Fit,
+                                    "Fit",
+                                )
+                                .clicked()
+                            {
+                                self.remote_view_mode = RemoteViewMode::Fit;
+                            }
+                            ui.separator();
                             ui.label(
                                 RichText::new(format!(
                                     "{}%  {:.0}ms  {:.0}fps",
@@ -1500,9 +1588,10 @@ impl AivanaApp {
             self.textures.get(&session_id),
             self.latest_frames.get(&session_id),
         ) {
-            let image_rect = fit_rect(
+            let image_rect = remote_image_rect(
                 rect.shrink(2.0),
                 Vec2::new(f32::from(frame.width), f32::from(frame.height)),
+                self.remote_view_mode,
             );
             let _ = self.engine.resize(
                 session_id,
@@ -1817,6 +1906,13 @@ fn fit_rect(bounds: Rect, image_size: Vec2) -> Rect {
     let scale = (bounds.width() / image_size.x).min(bounds.height() / image_size.y);
     let size = image_size * scale;
     Rect::from_center_size(bounds.center(), size)
+}
+
+fn remote_image_rect(bounds: Rect, image_size: Vec2, mode: RemoteViewMode) -> Rect {
+    match mode {
+        RemoteViewMode::Fit => fit_rect(bounds, image_size),
+        RemoteViewMode::ActualSize => Rect::from_center_size(bounds.center(), image_size),
+    }
 }
 
 fn viewport_to_remote(pos: Pos2, image_rect: Rect, frame: &FrameUpdate) -> (u16, u16) {

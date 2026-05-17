@@ -169,11 +169,18 @@ impl RemoteDesktopEngine for NativeRdpEngine {
         }
 
         for event in drained {
-            self.apply_event(session, event.clone());
-            self.event_backlog
-                .entry(session.id)
-                .or_default()
-                .push(event);
+            match event {
+                EngineEvent::Frame(frame) => {
+                    self.apply_frame(session, frame);
+                }
+                other => {
+                    self.apply_event(session, other.clone());
+                    self.event_backlog
+                        .entry(session.id)
+                        .or_default()
+                        .push(other);
+                }
+            }
         }
 
         self.frame_counter = self.frame_counter.wrapping_add(1);
@@ -214,18 +221,20 @@ fn spawn_runtime(
 }
 
 impl NativeRdpEngine {
+    fn apply_frame(&mut self, session: &mut RemoteSession, frame: FrameUpdate) {
+        session.status = SessionStatus::Connected;
+        session.frame_size = Some((frame.width, frame.height));
+        session.metrics.frame_rate = 60.0;
+        self.latest_frames.insert(session.id, frame);
+    }
+
     fn apply_event(&mut self, session: &mut RemoteSession, event: EngineEvent) {
         match event {
             EngineEvent::StatusChanged { status, .. } => {
                 session.status = status;
                 session.last_error = None;
             }
-            EngineEvent::Frame(frame) => {
-                session.status = SessionStatus::Connected;
-                session.frame_size = Some((frame.width, frame.height));
-                session.metrics.frame_rate = 60.0;
-                self.latest_frames.insert(session.id, frame);
-            }
+            EngineEvent::Frame(frame) => self.apply_frame(session, frame),
             EngineEvent::Error { message, .. } => {
                 session.status = SessionStatus::Failed;
                 session.last_error = Some(message);
