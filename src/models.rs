@@ -154,7 +154,7 @@ pub struct CredentialRef {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct SecretCredential {
     pub username: String,
     pub password: String,
@@ -208,6 +208,7 @@ pub enum MouseButton {
     Middle,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub enum EngineEvent {
     StatusChanged {
@@ -218,6 +219,10 @@ pub enum EngineEvent {
     Error {
         session_id: Uuid,
         class: DiagnosticClass,
+        message: String,
+    },
+    Diagnostic {
+        session_id: Uuid,
         message: String,
     },
     Disconnected {
@@ -320,6 +325,7 @@ pub struct ApprovalRequest {
     pub action_id: Uuid,
     pub session_id: Option<Uuid>,
     pub description: String,
+    pub action: InputAction,
     pub reason: String,
     pub expected_result: String,
     pub risk: RiskLevel,
@@ -345,6 +351,7 @@ pub struct Workspace {
     pub updated_at: DateTime<Utc>,
 }
 
+#[allow(dead_code)]
 #[derive(Clone, Debug)]
 pub struct ScreenObservation {
     pub session_id: Uuid,

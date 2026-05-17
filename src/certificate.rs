@@ -1,15 +1,66 @@
 use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
 
+use anyhow::{Context, Result};
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 
 use crate::models::{CertificateIdentity, CertificateTrustStatus};
+use crate::security::app_data_file;
 
-#[derive(Default)]
 pub struct CertificateTrustStore {
+    path: Option<PathBuf>,
     identities: HashMap<String, CertificateIdentity>,
 }
 
+impl Default for CertificateTrustStore {
+    fn default() -> Self {
+        Self {
+            path: None,
+            identities: HashMap::new(),
+        }
+    }
+}
+
 impl CertificateTrustStore {
+    pub fn new() -> Result<Self> {
+        Self::at(app_data_file("certificates.json")?)
+    }
+
+    pub fn at(path: PathBuf) -> Result<Self> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).context("create certificate store directory")?;
+        }
+        if !path.exists() {
+            return Ok(Self {
+                path: Some(path),
+                identities: HashMap::new(),
+            });
+        }
+
+        let json = fs::read_to_string(&path).context("read certificate trust store")?;
+        let persisted: PersistedCertificateTrustStore =
+            serde_json::from_str(&json).context("parse certificate trust store")?;
+        let had_synthetic_fingerprints = persisted
+            .identities
+            .iter()
+            .any(|identity| identity.fingerprint.starts_with("aivana-local-"));
+        let store = Self {
+            path: Some(path),
+            identities: persisted
+                .identities
+                .into_iter()
+                .filter(|identity| !identity.fingerprint.starts_with("aivana-local-"))
+                .map(|identity| (key(&identity.host, identity.port), identity))
+                .collect(),
+        };
+        if had_synthetic_fingerprints {
+            let _ = store.persist();
+        }
+        Ok(store)
+    }
+
     pub fn classify(&self, host: &str, port: u16, fingerprint: &str) -> CertificateTrustStatus {
         let key = key(host, port);
         match self.identities.get(&key) {
@@ -69,17 +120,25 @@ impl CertificateTrustStore {
             status,
         };
         self.identities.insert(key, identity.clone());
+        let _ = self.persist();
         identity
+    }
+
+    fn persist(&self) -> Result<()> {
+        let Some(path) = &self.path else {
+            return Ok(());
+        };
+        let persisted = PersistedCertificateTrustStore {
+            identities: self.identities.values().cloned().collect(),
+        };
+        let json = serde_json::to_string_pretty(&persisted).context("serialize cert store")?;
+        fs::write(path, json).context("write certificate trust store")
     }
 }
 
-pub fn synthetic_fingerprint(host: &str, port: u16) -> String {
-    let mut hash = 0xcbf29ce484222325u64;
-    for byte in format!("{host}:{port}").bytes() {
-        hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(0x100000001b3);
-    }
-    format!("aivana-local-{hash:016x}")
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct PersistedCertificateTrustStore {
+    identities: Vec<CertificateIdentity>,
 }
 
 fn key(host: &str, port: u16) -> String {
@@ -98,5 +157,48 @@ mod tests {
             store.classify("host", 3389, "two"),
             CertificateTrustStatus::Changed
         );
+    }
+
+    #[test]
+    fn persistent_certificate_store_roundtrips() {
+        let path = std::env::temp_dir().join(format!("aivana-certs-{}.json", uuid::Uuid::new_v4()));
+        let mut store = CertificateTrustStore::at(path.clone()).unwrap();
+        store.trust("host", 3389, "one");
+        let reloaded = CertificateTrustStore::at(path.clone()).unwrap();
+        assert_eq!(
+            reloaded.classify("host", 3389, "one"),
+            CertificateTrustStatus::Trusted
+        );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn persistent_store_removes_synthetic_fingerprints() {
+        let path = std::env::temp_dir().join(format!("aivana-certs-{}.json", uuid::Uuid::new_v4()));
+        fs::write(
+            &path,
+            r#"{
+  "identities": [
+    {
+      "host": "legacy",
+      "port": 3389,
+      "fingerprint": "aivana-local-deadbeef",
+      "first_seen_at": "2026-01-01T00:00:00Z",
+      "last_seen_at": "2026-01-01T00:00:00Z",
+      "status": "Trusted"
+    }
+  ]
+}"#,
+        )
+        .unwrap();
+
+        let store = CertificateTrustStore::at(path.clone()).unwrap();
+        assert_eq!(
+            store.classify("legacy", 3389, "aivana-local-deadbeef"),
+            CertificateTrustStatus::Unknown
+        );
+        let json = fs::read_to_string(&path).unwrap();
+        assert!(!json.contains("aivana-local"));
+        let _ = fs::remove_file(path);
     }
 }

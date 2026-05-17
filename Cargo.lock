@@ -203,6 +203,7 @@ dependencies = [
  "sspi",
  "tokio-rustls",
  "uuid",
+ "windows-sys 0.61.2",
  "x509-cert",
 ]
 
@@ -2490,17 +2491,19 @@ dependencies = [
 [[package]]
 name = "ironrdp-connector"
 version = "0.8.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0a8d5c1b8f167bbd9c935b08a4d3b592fe0a163ded7e4cc8880d471f06b3e2fa"
 dependencies = [
+ "der-parser",
  "ironrdp-core",
  "ironrdp-error",
  "ironrdp-pdu",
  "ironrdp-svc",
+ "md-5 0.10.6",
+ "num-bigint",
  "picky",
  "picky-asn1-der",
  "picky-asn1-x509",
  "rand 0.9.4",
+ "sha1 0.10.6",
  "sspi",
  "tracing",
  "url",
@@ -2567,8 +2570,6 @@ dependencies = [
 [[package]]
 name = "ironrdp-pdu"
 version = "0.7.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "409b96a94ca1fad1bfaa41789611bbb5efc112503b27b0513a1feb243e49eb60"
 dependencies = [
  "bit_field",
  "bitflags 2.11.1",

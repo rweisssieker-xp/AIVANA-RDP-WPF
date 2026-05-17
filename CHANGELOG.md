@@ -17,5 +17,9 @@
 - Added certificate trust gate and local KI risk explanation.
 - Added Approval Center, runbook engine, host/workspace memory, blackbox snapshots, JSON evidence export, and proactive KI USP actions.
 - Added reconnect/resize engine boundaries for RDP session hardening.
+- Added Windows DPAPI-backed persistent credential store and profile password migration cleanup.
+- Added persistent certificate trust, timeline/blackbox, workspace, and host memory stores.
+- Added RDP TLS fingerprint probing for certificate trust decisions.
+- Added approved-action execution, runbook next-step execution, pause/resume/abort, incident files on disk, and keyboard hotkey forwarding.
 - Replaced legacy desktop documentation with Rust architecture notes.
 - Added Rust unit tests for model behavior, credentials, diagnostics, redaction, policy, certificate trust, screen observation, runbooks, memory, AI explanations, and evidence export.

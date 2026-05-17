@@ -91,7 +91,9 @@ impl PreflightService for LocalPreflightService {
 
 pub fn classify_error(message: &str) -> DiagnosticClass {
     let lower = message.to_lowercase();
-    if lower.contains("dns") || lower.contains("socket address") {
+    if lower.contains("standard rdp security") || lower.contains("negotiation failure") {
+        DiagnosticClass::Protocol
+    } else if lower.contains("dns") || lower.contains("socket address") {
         DiagnosticClass::Dns
     } else if lower.contains("tcp") || lower.contains("connect") {
         DiagnosticClass::Tcp
@@ -136,6 +138,10 @@ mod tests {
         assert_eq!(
             classify_error("CredSSP failure"),
             DiagnosticClass::CredSspNla
+        );
+        assert_eq!(
+            classify_error("negotiation failure: server only supports Standard RDP Security"),
+            DiagnosticClass::Protocol
         );
     }
 }

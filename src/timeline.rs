@@ -1,6 +1,10 @@
 use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
 
+use anyhow::{Context, Result};
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::models::{BlackboxSnapshot, FrameUpdate, SessionEvent, SessionEventKind};
@@ -21,10 +25,78 @@ pub trait TimelineStore {
     fn export_evidence_json(&self, session_id: Uuid) -> String;
 }
 
-#[derive(Default)]
 pub struct InMemoryTimelineStore {
+    path: Option<PathBuf>,
     events: HashMap<Uuid, Vec<SessionEvent>>,
     snapshots: HashMap<Uuid, Vec<BlackboxSnapshot>>,
+}
+
+impl Default for InMemoryTimelineStore {
+    fn default() -> Self {
+        Self {
+            path: None,
+            events: HashMap::new(),
+            snapshots: HashMap::new(),
+        }
+    }
+}
+
+impl InMemoryTimelineStore {
+    pub fn new() -> Result<Self> {
+        Self::at(crate::security::app_data_file("timeline.json")?)
+    }
+
+    pub fn at(path: PathBuf) -> Result<Self> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).context("create timeline store directory")?;
+        }
+        if !path.exists() {
+            return Ok(Self {
+                path: Some(path),
+                events: HashMap::new(),
+                snapshots: HashMap::new(),
+            });
+        }
+
+        let json = fs::read_to_string(&path).context("read timeline store")?;
+        let persisted: PersistedTimelineStore =
+            serde_json::from_str(&json).context("parse timeline store")?;
+        Ok(Self {
+            path: Some(path),
+            events: persisted
+                .events
+                .into_iter()
+                .fold(HashMap::new(), |mut acc, event| {
+                    acc.entry(event.session_id).or_default().push(event);
+                    acc
+                }),
+            snapshots: persisted
+                .snapshots
+                .into_iter()
+                .fold(HashMap::new(), |mut acc, snapshot| {
+                    acc.entry(snapshot.session_id).or_default().push(snapshot);
+                    acc
+                }),
+        })
+    }
+
+    fn persist(&self) -> Result<()> {
+        let Some(path) = &self.path else {
+            return Ok(());
+        };
+        let persisted = PersistedTimelineStore {
+            events: self.events.values().flatten().cloned().collect(),
+            snapshots: self.snapshots.values().flatten().cloned().collect(),
+        };
+        let json = serde_json::to_string_pretty(&persisted).context("serialize timeline")?;
+        fs::write(path, json).context("write timeline store")
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+struct PersistedTimelineStore {
+    events: Vec<SessionEvent>,
+    snapshots: Vec<BlackboxSnapshot>,
 }
 
 impl TimelineStore for InMemoryTimelineStore {
@@ -48,6 +120,7 @@ impl TimelineStore for InMemoryTimelineStore {
                 message: redacted_message,
                 created_at: Utc::now(),
             });
+        let _ = self.persist();
     }
 
     fn events_for_session(&self, session_id: Uuid) -> Vec<SessionEvent> {
@@ -67,6 +140,7 @@ impl TimelineStore for InMemoryTimelineStore {
                 height: frame.height,
                 captured_at: Utc::now(),
             });
+        let _ = self.persist();
     }
 
     fn snapshots_for_session(&self, session_id: Uuid) -> Vec<BlackboxSnapshot> {

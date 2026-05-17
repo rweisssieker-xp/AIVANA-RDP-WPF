@@ -1,7 +1,7 @@
-use std::io::Write as _;
+use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::sync::mpsc::{Receiver, Sender, TryRecvError};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
 use ironrdp::connector::{self, ConnectionResult, Credentials};
@@ -13,15 +13,47 @@ use ironrdp_pdu::rdp::client_info::{PerformanceFlags, TimezoneInfo};
 use sspi::network_client::reqwest_network_client::ReqwestNetworkClient;
 use tokio_rustls::rustls;
 
+use crate::legacy_rdp::{LegacySecurityMode, detect_server_security};
 use crate::models::ConnectionProfile;
 use crate::models::{DirtyRegion, EngineEvent, FrameUpdate, InputAction, MouseButton};
 
-type UpgradedFramed =
-    ironrdp_blocking::Framed<rustls::StreamOwned<rustls::ClientConnection, TcpStream>>;
+type UpgradedFramed = ironrdp_blocking::Framed<RdpTransport>;
 
-pub struct IronRdpSessionInfo {
-    pub width: u16,
-    pub height: u16,
+enum RdpTransport {
+    Tls(rustls::StreamOwned<rustls::ClientConnection, TcpStream>),
+    Plain(TcpStream),
+}
+
+impl Read for RdpTransport {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        match self {
+            Self::Tls(stream) => stream.read(buf),
+            Self::Plain(stream) => stream.read(buf),
+        }
+    }
+}
+
+impl Write for RdpTransport {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        match self {
+            Self::Tls(stream) => stream.write(buf),
+            Self::Plain(stream) => stream.write(buf),
+        }
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        match self {
+            Self::Tls(stream) => stream.flush(),
+            Self::Plain(stream) => stream.flush(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum RdpSecurityMode {
+    NlaCredSsp,
+    TlsGraphicalLogin,
+    StandardRdp,
 }
 
 pub struct IronRdpRuntime {
@@ -31,45 +63,91 @@ pub struct IronRdpRuntime {
     pub input: Receiver<InputAction>,
 }
 
-pub fn connect_profile(profile: &ConnectionProfile) -> Result<IronRdpSessionInfo> {
+pub fn probe_server_fingerprint(profile: &ConnectionProfile) -> Result<String> {
+    block_unsupported_legacy_standard(profile)?;
     let config = build_config(profile);
-    let (connection_result, framed) =
-        connect(config, profile.host.clone(), profile.port).context("native IronRDP connect")?;
-
-    let mut image = DecodedImage::new(
-        ironrdp_graphics::image_processing::PixelFormat::RgbA32,
-        connection_result.desktop_size.width,
-        connection_result.desktop_size.height,
-    );
-
-    pump_initial_frames(connection_result, framed, &mut image).context("initial active stage")?;
-
-    Ok(IronRdpSessionInfo {
-        width: image.width(),
-        height: image.height(),
+    probe_server_fingerprint_with_config(profile, config).or_else(|err| {
+        if should_try_tls_fallback(&err) {
+            probe_server_fingerprint_with_config(profile, build_tls_config(profile))
+                .context("legacy TLS graphical-login fallback")
+        } else {
+            Err(err)
+        }
     })
 }
 
+fn probe_server_fingerprint_with_config(
+    profile: &ConnectionProfile,
+    config: connector::Config,
+) -> Result<String> {
+    let server_name = profile.host.clone();
+    let server_addr = lookup_addr(&server_name, profile.port).context("lookup address")?;
+    let tcp_stream =
+        TcpStream::connect_timeout(&server_addr, Duration::from_secs(8)).context("TCP connect")?;
+    let client_addr = tcp_stream
+        .local_addr()
+        .context("get local socket address")?;
+    let mut framed = ironrdp_blocking::Framed::new(tcp_stream);
+    let mut connector = connector::ClientConnector::new(config, client_addr);
+
+    let should_upgrade =
+        ironrdp_blocking::connect_begin(&mut framed, &mut connector).context("connection begin")?;
+    let initial_stream = framed.into_inner_no_leftover();
+    let (_upgraded_stream, server_public_key) =
+        tls_upgrade(initial_stream, server_name).context("TLS upgrade")?;
+    let _ = should_upgrade;
+    Ok(fingerprint_bytes(&server_public_key))
+}
+
 pub fn run_session(runtime: IronRdpRuntime) {
+    let session_id = runtime.session_id;
+    let events = runtime.events.clone();
     let result = run_session_inner(runtime);
     if let Err(err) = result {
-        // The event channel may be gone during shutdown; no extra action needed.
-        let _ = err;
+        let detail = format!("{err:#}");
+        events
+            .send(EngineEvent::Error {
+                session_id,
+                class: crate::diagnostics::classify_error(&detail),
+                message: detail,
+            })
+            .ok();
     }
 }
 
 fn run_session_inner(runtime: IronRdpRuntime) -> Result<()> {
-    let config = build_config(&runtime.profile);
-    let (connection_result, mut framed) =
-        connect(config, runtime.profile.host.clone(), runtime.profile.port)
-            .context("native IronRDP connect")?;
+    let detection = detect_server_security(&runtime.profile).ok();
+    let (connection_result, mut framed) = if detection
+        .as_ref()
+        .is_some_and(|detection| detection.mode == LegacySecurityMode::StandardRdp)
+    {
+        connect_standard(&runtime.profile).context("legacy Standard RDP Security connect")?
+    } else {
+        let config = build_config(&runtime.profile);
+        connect(config, runtime.profile.host.clone(), runtime.profile.port).or_else(|err| {
+            if should_try_tls_fallback(&err) {
+                connect(
+                    build_tls_config(&runtime.profile),
+                    runtime.profile.host.clone(),
+                    runtime.profile.port,
+                )
+                .context("legacy TLS graphical-login fallback")
+            } else {
+                Err(err)
+            }
+        })?
+    };
 
     let mut image = DecodedImage::new(
         ironrdp_graphics::image_processing::PixelFormat::RgbA32,
         connection_result.desktop_size.width,
         connection_result.desktop_size.height,
     );
+    let desktop_width = connection_result.desktop_size.width;
+    let desktop_height = connection_result.desktop_size.height;
     let mut active_stage = ActiveStage::new(connection_result);
+    let mut stats = RdpLoopStats::default();
+    let mut last_stats_event = Instant::now();
 
     runtime
         .events
@@ -78,22 +156,54 @@ fn run_session_inner(runtime: IronRdpRuntime) -> Result<()> {
             status: crate::models::SessionStatus::Connected,
         })
         .ok();
+    runtime
+        .events
+        .send(EngineEvent::Diagnostic {
+            session_id: runtime.session_id,
+            message: format!(
+                "ActiveStage ready, negotiated desktop {desktop_width}x{desktop_height}"
+            ),
+        })
+        .ok();
 
     loop {
-        drain_input(&runtime.input, &mut active_stage, &mut image, &mut framed)?;
+        if !drain_input(&runtime.input, &mut active_stage, &mut image, &mut framed)? {
+            runtime
+                .events
+                .send(EngineEvent::Disconnected {
+                    session_id: runtime.session_id,
+                    reason: "Input channel closed by Aivana".to_owned(),
+                })
+                .ok();
+            break;
+        }
 
         match framed.read_pdu() {
             Ok((action, payload)) => {
+                stats.pdus += 1;
+                stats.last_payload_len = payload.len();
+                match action {
+                    ironrdp_pdu::Action::FastPath => stats.fast_path_pdus += 1,
+                    ironrdp_pdu::Action::X224 => stats.x224_pdus += 1,
+                }
                 let outputs = active_stage.process(&mut image, action, &payload)?;
-                process_outputs(
+                let output_stats = process_outputs(
                     runtime.session_id,
                     outputs,
                     &mut framed,
                     &image,
                     &runtime.events,
                 )?;
+                stats.response_frames += output_stats.response_frames;
+                stats.graphics_updates += output_stats.graphics_updates;
+                stats.terminations += output_stats.terminations;
+                stats.other_outputs += output_stats.other_outputs;
             }
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) => {}
             Err(e) => {
                 runtime
                     .events
@@ -106,12 +216,57 @@ fn run_session_inner(runtime: IronRdpRuntime) -> Result<()> {
                 break;
             }
         }
+
+        if stats.pdus <= 5
+            || stats.graphics_updates == 0 && last_stats_event.elapsed() >= Duration::from_secs(3)
+            || last_stats_event.elapsed() >= Duration::from_secs(10)
+        {
+            runtime
+                .events
+                .send(EngineEvent::Diagnostic {
+                    session_id: runtime.session_id,
+                    message: stats.describe(),
+                })
+                .ok();
+            last_stats_event = Instant::now();
+        }
     }
 
     Ok(())
 }
 
+fn block_unsupported_legacy_standard(profile: &ConnectionProfile) -> Result<()> {
+    if let Ok(detection) = detect_server_security(profile) {
+        if detection.mode == LegacySecurityMode::StandardRdp {
+            anyhow::bail!(
+                "standard rdp security detected on {}:{}: {}. Native RC4 security exchange is not implemented yet.",
+                profile.host,
+                profile.port,
+                detection.detail
+            );
+        }
+    }
+    Ok(())
+}
+
 fn build_config(profile: &ConnectionProfile) -> connector::Config {
+    build_config_for_security(profile, RdpSecurityMode::NlaCredSsp)
+}
+
+fn build_tls_config(profile: &ConnectionProfile) -> connector::Config {
+    build_config_for_security(profile, RdpSecurityMode::TlsGraphicalLogin)
+}
+
+fn build_config_for_security(
+    profile: &ConnectionProfile,
+    security_mode: RdpSecurityMode,
+) -> connector::Config {
+    let (enable_tls, enable_credssp) = match security_mode {
+        RdpSecurityMode::NlaCredSsp => (false, true),
+        RdpSecurityMode::TlsGraphicalLogin => (true, false),
+        RdpSecurityMode::StandardRdp => (false, false),
+    };
+
     connector::Config {
         credentials: Credentials::UsernamePassword {
             username: profile.username.clone(),
@@ -122,8 +277,8 @@ fn build_config(profile: &ConnectionProfile) -> connector::Config {
         } else {
             Some(profile.domain.clone())
         },
-        enable_tls: false,
-        enable_credssp: true,
+        enable_tls,
+        enable_credssp,
         keyboard_type: KeyboardType::IbmEnhanced,
         keyboard_subtype: 0,
         keyboard_layout: 0,
@@ -197,7 +352,7 @@ fn connect(
         tls_upgrade(initial_stream, server_name.clone()).context("TLS upgrade")?;
 
     let upgraded = ironrdp_blocking::mark_as_upgraded(should_upgrade, &mut connector);
-    let mut upgraded_framed = ironrdp_blocking::Framed::new(upgraded_stream);
+    let mut upgraded_framed = ironrdp_blocking::Framed::new(RdpTransport::Tls(upgraded_stream));
     let mut network_client = ReqwestNetworkClient;
 
     let connection_result = ironrdp_blocking::connect_finalize(
@@ -214,33 +369,42 @@ fn connect(
     Ok((connection_result, upgraded_framed))
 }
 
-fn pump_initial_frames(
-    connection_result: ConnectionResult,
-    mut framed: UpgradedFramed,
-    image: &mut DecodedImage,
-) -> Result<()> {
-    let mut active_stage = ActiveStage::new(connection_result);
+fn connect_standard(profile: &ConnectionProfile) -> Result<(ConnectionResult, UpgradedFramed)> {
+    let server_addr = lookup_addr(&profile.host, profile.port).context("lookup address")?;
+    let tcp_stream =
+        TcpStream::connect_timeout(&server_addr, Duration::from_secs(8)).context("TCP connect")?;
+    tcp_stream
+        .set_read_timeout(Some(Duration::from_secs(2)))
+        .context("set read timeout")?;
 
-    for _ in 0..20 {
-        let (action, payload) = match framed.read_pdu() {
-            Ok((action, payload)) => (action, payload),
-            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => break,
-            Err(e) => return Err(anyhow::Error::new(e).context("read RDP frame")),
-        };
+    let client_addr = tcp_stream
+        .local_addr()
+        .context("get local socket address")?;
+    let mut framed = ironrdp_blocking::Framed::new(tcp_stream);
+    let mut connector = connector::ClientConnector::new(
+        build_config_for_security(profile, RdpSecurityMode::StandardRdp),
+        client_addr,
+    );
 
-        let outputs = active_stage.process(image, action, &payload)?;
-        for output in outputs {
-            match output {
-                ActiveStageOutput::ResponseFrame(frame) => {
-                    framed.write_all(&frame).context("write RDP response")?
-                }
-                ActiveStageOutput::Terminate(_) => return Ok(()),
-                _ => {}
-            }
-        }
-    }
+    let should_upgrade =
+        ironrdp_blocking::connect_begin(&mut framed, &mut connector).context("connection begin")?;
+    let plain_stream = framed.into_inner_no_leftover();
+    let upgraded = ironrdp_blocking::mark_as_upgraded(should_upgrade, &mut connector);
+    let mut upgraded_framed = ironrdp_blocking::Framed::new(RdpTransport::Plain(plain_stream));
+    let mut network_client = ReqwestNetworkClient;
 
-    Ok(())
+    let connection_result = ironrdp_blocking::connect_finalize(
+        upgraded,
+        connector,
+        &mut upgraded_framed,
+        &mut network_client,
+        profile.host.clone().into(),
+        Vec::new(),
+        None,
+    )
+    .context("connection finalize")?;
+
+    Ok((connection_result, upgraded_framed))
 }
 
 fn drain_input(
@@ -248,7 +412,7 @@ fn drain_input(
     active_stage: &mut ActiveStage,
     image: &mut DecodedImage,
     framed: &mut UpgradedFramed,
-) -> Result<()> {
+) -> Result<bool> {
     loop {
         match input.try_recv() {
             Ok(action) => {
@@ -264,8 +428,8 @@ fn drain_input(
                     }
                 }
             }
-            Err(TryRecvError::Empty) => return Ok(()),
-            Err(TryRecvError::Disconnected) => return Ok(()),
+            Err(TryRecvError::Empty) => return Ok(true),
+            Err(TryRecvError::Disconnected) => return Ok(false),
         }
     }
 }
@@ -276,13 +440,16 @@ fn process_outputs(
     framed: &mut UpgradedFramed,
     image: &DecodedImage,
     events: &Sender<EngineEvent>,
-) -> Result<()> {
+) -> Result<OutputStats> {
+    let mut stats = OutputStats::default();
     for output in outputs {
         match output {
             ActiveStageOutput::ResponseFrame(frame) => {
+                stats.response_frames += 1;
                 framed.write_all(&frame).context("write response")?
             }
             ActiveStageOutput::GraphicsUpdate(region) => {
+                stats.graphics_updates += 1;
                 events
                     .send(EngineEvent::Frame(FrameUpdate {
                         session_id,
@@ -301,6 +468,7 @@ fn process_outputs(
                     .ok();
             }
             ActiveStageOutput::Terminate(reason) => {
+                stats.terminations += 1;
                 events
                     .send(EngineEvent::Disconnected {
                         session_id,
@@ -308,11 +476,47 @@ fn process_outputs(
                     })
                     .ok();
             }
-            _ => {}
+            _ => stats.other_outputs += 1,
         }
     }
 
-    Ok(())
+    Ok(stats)
+}
+
+#[derive(Default)]
+struct RdpLoopStats {
+    pdus: u64,
+    fast_path_pdus: u64,
+    x224_pdus: u64,
+    response_frames: u64,
+    graphics_updates: u64,
+    terminations: u64,
+    other_outputs: u64,
+    last_payload_len: usize,
+}
+
+impl RdpLoopStats {
+    fn describe(&self) -> String {
+        format!(
+            "pdus={} fast_path={} x224={} responses={} graphics_updates={} other_outputs={} terminations={} last_payload={} bytes",
+            self.pdus,
+            self.fast_path_pdus,
+            self.x224_pdus,
+            self.response_frames,
+            self.graphics_updates,
+            self.other_outputs,
+            self.terminations,
+            self.last_payload_len
+        )
+    }
+}
+
+#[derive(Default)]
+struct OutputStats {
+    response_frames: u64,
+    graphics_updates: u64,
+    terminations: u64,
+    other_outputs: u64,
 }
 
 fn input_action_to_fastpath(
@@ -378,10 +582,80 @@ fn input_action_to_fastpath(
                 ]
             })
             .collect(),
-        InputAction::Hotkey { .. }
-        | InputAction::Wait { .. }
-        | InputAction::Screenshot
-        | InputAction::Verify { .. } => Vec::new(),
+        InputAction::Hotkey { keys } => {
+            let mut pressed = Vec::new();
+            let mut events = Vec::new();
+            for key in keys {
+                if let Some((scan_code, extended)) = key_to_scancode(&key) {
+                    let flags = if extended {
+                        KeyboardFlags::EXTENDED
+                    } else {
+                        KeyboardFlags::empty()
+                    };
+                    events.push(FastPathInputEvent::KeyboardEvent(flags, scan_code));
+                    pressed.push((scan_code, flags));
+                }
+            }
+            for (scan_code, flags) in pressed.into_iter().rev() {
+                events.push(FastPathInputEvent::KeyboardEvent(
+                    flags | KeyboardFlags::RELEASE,
+                    scan_code,
+                ));
+            }
+            events
+        }
+        InputAction::Wait { .. } | InputAction::Screenshot | InputAction::Verify { .. } => {
+            Vec::new()
+        }
+    }
+}
+
+fn key_to_scancode(key: &str) -> Option<(u8, bool)> {
+    match key.to_ascii_lowercase().as_str() {
+        "a" => Some((0x1e, false)),
+        "b" => Some((0x30, false)),
+        "c" => Some((0x2e, false)),
+        "d" => Some((0x20, false)),
+        "e" => Some((0x12, false)),
+        "f" => Some((0x21, false)),
+        "g" => Some((0x22, false)),
+        "h" => Some((0x23, false)),
+        "i" => Some((0x17, false)),
+        "j" => Some((0x24, false)),
+        "k" => Some((0x25, false)),
+        "l" => Some((0x26, false)),
+        "m" => Some((0x32, false)),
+        "n" => Some((0x31, false)),
+        "o" => Some((0x18, false)),
+        "p" => Some((0x19, false)),
+        "q" => Some((0x10, false)),
+        "r" => Some((0x13, false)),
+        "s" => Some((0x1f, false)),
+        "t" => Some((0x14, false)),
+        "u" => Some((0x16, false)),
+        "v" => Some((0x2f, false)),
+        "w" => Some((0x11, false)),
+        "x" => Some((0x2d, false)),
+        "y" => Some((0x15, false)),
+        "z" => Some((0x2c, false)),
+        "enter" => Some((0x1c, false)),
+        "tab" => Some((0x0f, false)),
+        "esc" | "escape" => Some((0x01, false)),
+        "space" => Some((0x39, false)),
+        "ctrl" | "control" => Some((0x1d, false)),
+        "alt" => Some((0x38, false)),
+        "shift" => Some((0x2a, false)),
+        "win" | "meta" | "windows" => Some((0x5b, true)),
+        "del" | "delete" => Some((0x53, true)),
+        "home" => Some((0x47, true)),
+        "end" => Some((0x4f, true)),
+        "pageup" => Some((0x49, true)),
+        "pagedown" => Some((0x51, true)),
+        "left" => Some((0x4b, true)),
+        "right" => Some((0x4d, true)),
+        "up" => Some((0x48, true)),
+        "down" => Some((0x50, true)),
+        _ => None,
     }
 }
 
@@ -392,6 +666,184 @@ fn frame_hash(bytes: &[u8]) -> u64 {
         hash = hash.wrapping_mul(0x100000001b3);
     }
     hash
+}
+
+fn fingerprint_bytes(bytes: &[u8]) -> String {
+    let hash = frame_hash(bytes);
+    format!("rdp-server-key-{hash:016x}")
+}
+
+fn should_try_tls_fallback(err: &anyhow::Error) -> bool {
+    let message = format!("{err:#}").to_lowercase();
+    message.contains("negotiation failure")
+        && !message.contains("standard rdp security")
+        && !message.contains("auth")
+        && !message.contains("password")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::models::ConnectionProfile;
+
+    #[test]
+    #[ignore = "requires AIVANA_RDP_TEST_HOST and a reachable RDP endpoint"]
+    fn manual_probe_server_fingerprint_or_security_mode() {
+        let host = std::env::var("AIVANA_RDP_TEST_HOST").expect("AIVANA_RDP_TEST_HOST");
+        let port = std::env::var("AIVANA_RDP_TEST_PORT")
+            .ok()
+            .and_then(|value| value.parse::<u16>().ok())
+            .unwrap_or(3389);
+        let mut profile = ConnectionProfile::sample("manual-rdp-probe", &host, "Manual", false);
+        profile.port = port;
+        match probe_server_fingerprint(&profile) {
+            Ok(fingerprint) => assert!(
+                fingerprint.starts_with("rdp-server-key-"),
+                "unexpected fingerprint format: {fingerprint}"
+            ),
+            Err(err) => {
+                let message = format!("{err:#}").to_lowercase();
+                assert!(
+                    message.contains("standard rdp security"),
+                    "unexpected RDP probe error: {err:#}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn standard_rdp_detection_error_is_not_tls_fallback_candidate() {
+        let err =
+            anyhow::anyhow!("standard rdp security detected on legacy:3389: Standard RDP Security");
+
+        assert!(!should_try_tls_fallback(&err));
+    }
+
+    #[test]
+    fn runtime_failure_sends_error_event() {
+        let (events, receiver) = std::sync::mpsc::channel();
+        let (_input, input_receiver) = std::sync::mpsc::channel();
+        let mut profile =
+            ConnectionProfile::sample("invalid-rdp-host", "203.0.113.10", "Manual", false);
+        profile.port = 9;
+        let session_id = uuid::Uuid::new_v4();
+
+        run_session(IronRdpRuntime {
+            profile,
+            session_id,
+            events,
+            input: input_receiver,
+        });
+
+        let event = receiver.try_recv().expect("runtime error event");
+        assert!(matches!(event, EngineEvent::Error { .. }));
+    }
+
+    #[test]
+    #[ignore = "requires AIVANA_RDP_TEST_HOST pointing at a Standard RDP Security endpoint"]
+    fn manual_standard_rdp_connect_reaches_connector() {
+        let host = std::env::var("AIVANA_RDP_TEST_HOST").expect("AIVANA_RDP_TEST_HOST");
+        let port = std::env::var("AIVANA_RDP_TEST_PORT")
+            .ok()
+            .and_then(|value| value.parse::<u16>().ok())
+            .unwrap_or(3389);
+        let mut profile = ConnectionProfile::sample("manual-standard-rdp", &host, "Manual", false);
+        profile.port = port;
+
+        let result = connect_standard(&profile);
+        match &result {
+            Ok((connection, _)) => println!(
+                "manual standard RDP connect reached desktop {}x{}",
+                connection.desktop_size.width, connection.desktop_size.height
+            ),
+            Err(err) => println!("manual standard RDP connect error: {err:#}"),
+        }
+        if let Err(err) = &result {
+            let message = format!("{err:#}").to_lowercase();
+            assert!(
+                !message.contains("standard rdp security is not supported")
+                    && !message.contains("server only supports standard rdp security"),
+                "legacy connector still blocks Standard RDP Security: {err:#}"
+            );
+        }
+    }
+
+    #[test]
+    #[ignore = "requires AIVANA_RDP_TEST_HOST, AIVANA_RDP_TEST_USER and AIVANA_RDP_TEST_PASSWORD"]
+    fn manual_rdp_session_receives_framebuffer() {
+        let host = std::env::var("AIVANA_RDP_TEST_HOST").expect("AIVANA_RDP_TEST_HOST");
+        let username = std::env::var("AIVANA_RDP_TEST_USER").expect("AIVANA_RDP_TEST_USER");
+        let password = std::env::var("AIVANA_RDP_TEST_PASSWORD").expect("AIVANA_RDP_TEST_PASSWORD");
+        let domain = std::env::var("AIVANA_RDP_TEST_DOMAIN").unwrap_or_default();
+        let port = std::env::var("AIVANA_RDP_TEST_PORT")
+            .ok()
+            .and_then(|value| value.parse::<u16>().ok())
+            .unwrap_or(3389);
+
+        let (events, receiver) = std::sync::mpsc::channel();
+        let (input, input_receiver) = std::sync::mpsc::channel();
+        let mut profile = ConnectionProfile::sample("manual-rdp-session", &host, "Manual", false);
+        profile.port = port;
+        profile.username = username;
+        profile.password = password;
+        profile.domain = domain;
+        let session_id = uuid::Uuid::new_v4();
+
+        std::thread::spawn(move || {
+            run_session(IronRdpRuntime {
+                profile,
+                session_id,
+                events,
+                input: input_receiver,
+            });
+        });
+
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
+        let mut saw_connected = false;
+        let mut saw_frame = false;
+        let mut last_diagnostic = String::new();
+
+        while std::time::Instant::now() < deadline {
+            match receiver.recv_timeout(std::time::Duration::from_millis(500)) {
+                Ok(EngineEvent::StatusChanged { status, .. }) => {
+                    println!("session status: {}", status.label());
+                    saw_connected |= status == crate::models::SessionStatus::Connected;
+                }
+                Ok(EngineEvent::Diagnostic { message, .. }) => {
+                    println!("session diagnostic: {message}");
+                    last_diagnostic = message;
+                }
+                Ok(EngineEvent::Frame(frame)) => {
+                    println!(
+                        "session framebuffer: {}x{} hash={} dirty_regions={}",
+                        frame.width,
+                        frame.height,
+                        frame.frame_hash,
+                        frame.dirty_regions.len()
+                    );
+                    saw_frame = true;
+                    break;
+                }
+                Ok(EngineEvent::Error { class, message, .. }) => {
+                    panic!("session error {class:?}: {message}");
+                }
+                Ok(EngineEvent::Disconnected { reason, .. }) => {
+                    panic!("session disconnected before framebuffer: {reason}");
+                }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    panic!("session event channel closed before framebuffer");
+                }
+            }
+        }
+
+        drop(input);
+        assert!(saw_connected, "session never reached Connected");
+        assert!(
+            saw_frame,
+            "session reached Connected but no framebuffer arrived; last diagnostic: {last_diagnostic}"
+        );
+    }
 }
 
 fn lookup_addr(hostname: &str, port: u16) -> Result<std::net::SocketAddr> {

@@ -14,12 +14,13 @@ The app builds as a single Rust desktop binary with `eframe`/`egui`. There is no
 - Pointer move, click, scroll, and typed text forwarding into the RDP input path.
 - Local preflight diagnostics for DNS/TCP/credential readiness.
 - Local KI diagnosis from deterministic findings and session evidence.
-- Certificate trust gate with local fingerprint status and KI risk explanation.
-- Timeline and Blackbox evidence store with redaction, Markdown incident export, and JSON evidence export.
-- Guarded Computer Use flow that observes native framebuffers, detects basic screen state, plans actions, queues approvals, and traces observations.
-- Approval Center for elevated-risk KI actions.
-- Runbook engine with first diagnostic/evidence runbooks and Evidence Mode.
-- Workspace cockpit with host memory, runbook inventory, open approvals, and recommended next step.
+- Persistent credential store: Windows DPAPI-protected secrets on Windows, profile JSON stores only `credential_id`.
+- Certificate trust gate with RDP TLS fingerprint probing, local persistence, reject/trust decisions, and KI risk explanation.
+- Persistent Timeline and Blackbox evidence store with redaction, Markdown incident export, JSON evidence export, and disk export folders.
+- Guarded Computer Use flow that observes native framebuffers, detects basic screen state, plans actions, queues approvals, executes approved input, and traces verification.
+- Approval Center for elevated-risk KI actions with allow/deny/runbook/abort decisions.
+- Runbook engine with first diagnostic/evidence runbooks, Evidence Mode, next-step execution, pause/resume/abort.
+- Persistent Workspace Cockpit with host memory, workspace memory, runbook inventory, open approvals, and recommended next step.
 - Proactive KI USP actions: Why did this fail, What changed, Safe next action, Evidence mode, Ticket in 30 seconds, Runbook recommendation.
 
 ## Requirements
@@ -49,16 +50,16 @@ src/
   ironrdp_client.rs  Native IronRDP connection, active-stage loop, frames, input PDUs
   services.rs        Profile persistence and RemoteDesktopEngine runtime channels
   models.rs          Public models and interface payloads
-  security.rs        Credential boundary and redaction
-  certificate.rs     Certificate trust classification and local fingerprint decisions
+  security.rs        DPAPI-backed credential persistence and redaction
+  certificate.rs     Certificate trust classification, probing, persistence
   diagnostics.rs     Preflight and typed error classification
   ai.rs              Local and optional-provider KI abstraction
   computer_use.rs    Frame observation, action planning, policy-gated execution
   policy.rs          Computer Use safety decisions
   runbook.rs         Local diagnostic and evidence runbooks
-  memory.rs          Redacted host and workspace memory
-  timeline.rs        Session event audit and incident export
-  workspace.rs       Workspace cockpit model
+  memory.rs          Redacted persistent host and workspace memory
+  timeline.rs        Persistent session audit, blackbox snapshots, incident export
+  workspace.rs       Persistent workspace cockpit model
 ```
 
 ## Verification

@@ -2,28 +2,53 @@ use std::collections::HashMap;
 
 use chrono::Utc;
 use eframe::egui::{
-    self, Align, Color32, ColorImage, Context, CornerRadius, FontId, Frame, Layout, Margin, Pos2,
-    Rect, RichText, ScrollArea, Sense, Stroke, StrokeKind, TextureHandle, TextureOptions, Ui,
-    UiBuilder, Vec2, pos2,
+    self, Align, Color32, ColorImage, Context, CornerRadius, FontFamily, FontId, Frame, Layout,
+    Margin, Pos2, Rect, RichText, ScrollArea, Sense, Stroke, StrokeKind, TextStyle, TextureHandle,
+    TextureOptions, Ui, UiBuilder, Vec2, pos2,
 };
-use egui_extras::{Column, TableBuilder};
 use uuid::Uuid;
 
 use crate::ai::{AiProvider, LocalAiProvider};
-use crate::certificate::{CertificateTrustStore, synthetic_fingerprint};
+use crate::certificate::CertificateTrustStore;
 use crate::computer_use::ComputerUseAgent;
 use crate::diagnostics::{LocalPreflightService, PreflightService};
+use crate::ironrdp_client::probe_server_fingerprint;
 use crate::memory::MemoryStore;
 use crate::models::{
     AiAction, AiExplanation, ApprovalRequest, ApprovalStatus, ConnectionProfile, DiagnosticFinding,
-    DraftProfile, EngineEvent, FrameUpdate, InputAction, MouseButton, PolicyDecision, Protocol,
-    RemoteSession, RiskLevel, SecretCredential, SessionEventKind,
+    DiagnosticSeverity, DraftProfile, EngineEvent, FrameUpdate, InputAction, MouseButton,
+    PolicyDecision, Protocol, RemoteSession, RiskLevel, SecretCredential, SessionEventKind,
+    SessionStatus,
 };
 use crate::runbook::RunbookEngine;
-use crate::security::{CredentialStore, LocalCredentialStore};
+use crate::security::{CredentialStore, PersistentCredentialStore, app_data_file};
 use crate::services::{NativeRdpEngine, ProfileStore, RemoteDesktopEngine};
 use crate::timeline::{InMemoryTimelineStore, TimelineStore};
 use crate::workspace::WorkspaceStore;
+
+mod tw {
+    use eframe::egui::Color32;
+
+    pub const WHITE: Color32 = Color32::from_rgb(255, 255, 255);
+    pub const SLATE_50: Color32 = Color32::from_rgb(248, 250, 252);
+    pub const SLATE_100: Color32 = Color32::from_rgb(241, 245, 249);
+    pub const SLATE_200: Color32 = Color32::from_rgb(226, 232, 240);
+    pub const SLATE_300: Color32 = Color32::from_rgb(203, 213, 225);
+    pub const SLATE_400: Color32 = Color32::from_rgb(148, 163, 184);
+    pub const SLATE_600: Color32 = Color32::from_rgb(71, 85, 105);
+    pub const SLATE_700: Color32 = Color32::from_rgb(51, 65, 85);
+    pub const SLATE_800: Color32 = Color32::from_rgb(30, 41, 59);
+    pub const SLATE_900: Color32 = Color32::from_rgb(15, 23, 42);
+    pub const SLATE_950: Color32 = Color32::from_rgb(2, 6, 23);
+    pub const BLUE_50: Color32 = Color32::from_rgb(239, 246, 255);
+    pub const BLUE_100: Color32 = Color32::from_rgb(219, 234, 254);
+    pub const BLUE_500: Color32 = Color32::from_rgb(59, 130, 246);
+    pub const BLUE_600: Color32 = Color32::from_rgb(37, 99, 235);
+    pub const BLUE_700: Color32 = Color32::from_rgb(29, 78, 216);
+    pub const SKY_300: Color32 = Color32::from_rgb(125, 211, 252);
+    pub const RED_600: Color32 = Color32::from_rgb(220, 38, 38);
+    pub const RED_700: Color32 = Color32::from_rgb(185, 28, 28);
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum View {
@@ -48,7 +73,7 @@ pub struct AivanaApp {
     engine: NativeRdpEngine,
     textures: HashMap<Uuid, TextureHandle>,
     latest_frames: HashMap<Uuid, FrameUpdate>,
-    credentials: LocalCredentialStore,
+    credentials: PersistentCredentialStore,
     preflight: LocalPreflightService,
     ai: LocalAiProvider,
     timeline: InMemoryTimelineStore,
@@ -57,10 +82,12 @@ pub struct AivanaApp {
     runbooks: RunbookEngine,
     memory: MemoryStore,
     approvals: Vec<ApprovalRequest>,
+    active_runbook_execution: Option<Uuid>,
     diagnostics: Vec<DiagnosticFinding>,
     ai_diagnosis: String,
     computer_use_status: String,
     certificate_notice: String,
+    session_inspector_open: bool,
 }
 
 impl AivanaApp {
@@ -84,8 +111,27 @@ impl AivanaApp {
         };
 
         let selected_profile = profiles.first().map(|profile| profile.id);
-        let mut workspaces = WorkspaceStore::default();
+        let initial_draft =
+            profiles
+                .first()
+                .map(DraftProfile::from)
+                .unwrap_or_else(|| DraftProfile {
+                    port: Protocol::Rdp.default_port().to_string(),
+                    group: "Default".to_owned(),
+                    ..Default::default()
+                });
+        let mut workspaces = WorkspaceStore::new().unwrap_or_default();
         workspaces.ensure_default();
+
+        let credentials = PersistentCredentialStore::new().unwrap_or_else(|_| {
+            PersistentCredentialStore::at(
+                std::env::temp_dir().join("aivana-credentials-fallback.json"),
+            )
+            .expect("fallback credential store")
+        });
+        let certificates = CertificateTrustStore::new().unwrap_or_default();
+        let timeline = InMemoryTimelineStore::new().unwrap_or_default();
+        let memory = MemoryStore::new().unwrap_or_default();
 
         Self {
             profiles,
@@ -94,30 +140,28 @@ impl AivanaApp {
             selected_session: None,
             view: View::Connections,
             search: String::new(),
-            draft: DraftProfile {
-                port: Protocol::Rdp.default_port().to_string(),
-                group: "Default".to_owned(),
-                ..Default::default()
-            },
-            editing_profile: None,
+            draft: initial_draft,
+            editing_profile: selected_profile,
             status,
             store,
             engine: NativeRdpEngine::default(),
             textures: HashMap::new(),
             latest_frames: HashMap::new(),
-            credentials: LocalCredentialStore::default(),
+            credentials,
             preflight: LocalPreflightService,
             ai: LocalAiProvider,
-            timeline: InMemoryTimelineStore::default(),
+            timeline,
             workspaces,
-            certificates: CertificateTrustStore::default(),
+            certificates,
             runbooks: RunbookEngine::with_defaults(),
-            memory: MemoryStore::default(),
+            memory,
             approvals: Vec::new(),
+            active_runbook_execution: None,
             diagnostics: Vec::new(),
             ai_diagnosis: "Lokale KI-Diagnose wartet auf Preflight oder Sessiondaten.".to_owned(),
             computer_use_status: "Computer Use wartet auf einen Framebuffer.".to_owned(),
             certificate_notice: "Certificate Trust wartet auf einen Host.".to_owned(),
+            session_inspector_open: false,
         }
     }
 
@@ -168,7 +212,19 @@ impl AivanaApp {
     }
 
     fn edit_selected_profile(&mut self) {
-        if let Some(profile) = self.selected_profile().cloned() {
+        if let Some(profile_id) = self.selected_profile {
+            self.load_profile_into_editor(profile_id);
+        }
+    }
+
+    fn load_profile_into_editor(&mut self, profile_id: Uuid) {
+        if let Some(profile) = self
+            .profiles
+            .iter()
+            .find(|profile| profile.id == profile_id)
+            .cloned()
+        {
+            self.selected_profile = Some(profile.id);
             self.editing_profile = Some(profile.id);
             self.draft = DraftProfile::from(&profile);
             self.status = format!("Editing {}", profile.name);
@@ -248,8 +304,14 @@ impl AivanaApp {
             self.profiles.push(profile);
         }
 
+        let saved_profile = self.selected_profile;
         self.save_profiles();
-        self.start_new_profile();
+        if let Some(profile_id) = saved_profile {
+            self.load_profile_into_editor(profile_id);
+            self.status = "Profile saved".to_owned();
+        } else {
+            self.start_new_profile();
+        }
     }
 
     fn connect_selected(&mut self) {
@@ -258,19 +320,47 @@ impl AivanaApp {
             return;
         };
 
-        let fingerprint = synthetic_fingerprint(&profile.host, profile.port);
-        let cert_status = self
-            .certificates
-            .classify(&profile.host, profile.port, &fingerprint);
-        if !matches!(cert_status, crate::models::CertificateTrustStatus::Trusted) {
+        let mut legacy_standard_rdp = false;
+        let fingerprint = match probe_server_fingerprint(&profile) {
+            Ok(fingerprint) => fingerprint,
+            Err(err) if is_standard_rdp_security_error(&format!("{err:#}")) => {
+                legacy_standard_rdp = true;
+                "legacy-standard-rdp-no-tls-certificate".to_owned()
+            }
+            Err(err) => {
+                self.status = format!("RDP certificate probe failed: {err}");
+                self.certificate_notice =
+                    "Kein TLS-Zertifikat pruefbar; Verbindung bleibt blockiert.".to_owned();
+                self.diagnostics = vec![DiagnosticFinding {
+                    class: crate::models::DiagnosticClass::Tls,
+                    severity: DiagnosticSeverity::Error,
+                    title: "TLS-Zertifikat nicht pruefbar".to_owned(),
+                    detail: err.to_string(),
+                    fix: "RDP-Server muss TLS/NLA anbieten oder ein unterstuetzter Backendpfad muss ergaenzt werden.".to_owned(),
+                }];
+                self.ai_diagnosis = "RDP ist erreichbar, aber der TLS-/Certificate-Probe ist fehlgeschlagen. Aivana blockiert den Connect, damit kein unsicherer Fallback als Trust-Entscheidung gespeichert wird.".to_owned();
+                return;
+            }
+        };
+        if legacy_standard_rdp {
             self.certificate_notice = format!(
-                "{:?}: {} Fingerprint: {}",
-                cert_status,
-                self.certificates.explain_risk(cert_status),
-                fingerprint
+                "{}:{} nutzt Standard RDP Security ohne TLS-Zertifikat. Aivana versucht den nativen Legacy-Backendpfad.",
+                profile.host, profile.port
             );
-            self.status = "Certificate trust decision required before connect".to_owned();
-            return;
+        } else {
+            let cert_status = self
+                .certificates
+                .classify(&profile.host, profile.port, &fingerprint);
+            if !matches!(cert_status, crate::models::CertificateTrustStatus::Trusted) {
+                self.certificate_notice = format!(
+                    "{:?}: {} Fingerprint: {}",
+                    cert_status,
+                    self.certificates.explain_risk(cert_status),
+                    fingerprint
+                );
+                self.status = "Certificate trust decision required before connect".to_owned();
+                return;
+            }
         }
 
         if let Some(credential_id) = profile.credential_id {
@@ -316,15 +406,117 @@ impl AivanaApp {
             self.status = "Select a profile first".to_owned();
             return;
         };
-        let fingerprint = synthetic_fingerprint(&profile.host, profile.port);
+        let (fingerprint, source) = match probe_server_fingerprint(&profile) {
+            Ok(fingerprint) => (fingerprint, "RDP TLS probe"),
+            Err(err) if is_standard_rdp_security_error(&format!("{err:#}")) => {
+                self.block_standard_rdp_security(&profile, &format!("{err:#}"));
+                return;
+            }
+            Err(err) => {
+                self.status = format!("Certificate probe failed: {err}");
+                self.certificate_notice =
+                    "Trust blockiert: kein echtes TLS-Zertifikat vom RDP-Server erhalten."
+                        .to_owned();
+                return;
+            }
+        };
         let identity = self
             .certificates
             .trust(&profile.host, profile.port, &fingerprint);
         self.certificate_notice = format!(
-            "Trusted {}:{} fingerprint {}",
+            "Trusted {}:{} fingerprint {} ({source})",
             identity.host, identity.port, identity.fingerprint
         );
         self.status = "Certificate trusted locally".to_owned();
+    }
+
+    fn reject_selected_certificate(&mut self) {
+        let Some(profile) = self.selected_profile().cloned() else {
+            self.status = "Select a profile first".to_owned();
+            return;
+        };
+        let fingerprint = match probe_server_fingerprint(&profile) {
+            Ok(fingerprint) => fingerprint,
+            Err(err) if is_standard_rdp_security_error(&format!("{err:#}")) => {
+                self.block_standard_rdp_security(&profile, &format!("{err:#}"));
+                return;
+            }
+            Err(err) => {
+                self.status = format!("Certificate probe failed: {err}");
+                self.certificate_notice =
+                    "Reject blockiert: kein echtes TLS-Zertifikat vom RDP-Server erhalten."
+                        .to_owned();
+                return;
+            }
+        };
+        let identity = self
+            .certificates
+            .reject(&profile.host, profile.port, &fingerprint);
+        self.certificate_notice = format!(
+            "Rejected {}:{} fingerprint {}",
+            identity.host, identity.port, identity.fingerprint
+        );
+        self.status = "Certificate rejected locally".to_owned();
+    }
+
+    fn block_standard_rdp_security(&mut self, profile: &ConnectionProfile, detail: &str) {
+        self.status = format!("{} uses unsupported Standard RDP Security", profile.host);
+        self.certificate_notice = format!(
+            "{}:{} bietet kein TLS/NLA-Zertifikat an. Standard RDP Security wird vom nativen IronRDP-Backend nicht unterstuetzt.",
+            profile.host, profile.port
+        );
+        self.diagnostics = vec![DiagnosticFinding {
+            class: crate::models::DiagnosticClass::Protocol,
+            severity: DiagnosticSeverity::Error,
+            title: "Standard RDP Security nicht unterstuetzt".to_owned(),
+            detail: detail.to_owned(),
+            fix: "Auf dem Server TLS/NLA fuer RDP aktivieren oder einen zusaetzlichen Standard-RDP-Security-Backendpfad implementieren.".to_owned(),
+        }];
+        self.ai_diagnosis = format!(
+            "Root Cause: {} ist per Netzwerk erreichbar, bietet aber nur altes Standard RDP Security an. Aivana nutzt kein mstsc und das aktuelle native IronRDP-Backend kann diesen Modus nicht oeffnen. Fix: TLS/NLA auf dem Host aktivieren oder Backend erweitern.",
+            profile.host
+        );
+    }
+
+    fn test_selected_credential(&mut self) {
+        let Some(profile) = self.selected_profile().cloned() else {
+            self.status = "Select a profile first".to_owned();
+            return;
+        };
+        let Some(credential_id) = profile.credential_id else {
+            self.status = "Profile has no saved credential".to_owned();
+            return;
+        };
+        match self.credentials.test(credential_id) {
+            Ok(health) => self.status = format!("Credential status: {health:?}"),
+            Err(err) => self.status = format!("Credential test failed: {err}"),
+        }
+    }
+
+    fn delete_selected_credential(&mut self) {
+        let Some(profile_id) = self.selected_profile else {
+            self.status = "Select a profile first".to_owned();
+            return;
+        };
+        let Some(profile) = self
+            .profiles
+            .iter_mut()
+            .find(|profile| profile.id == profile_id)
+        else {
+            self.status = "Profile not found".to_owned();
+            return;
+        };
+        let Some(credential_id) = profile.credential_id.take() else {
+            self.status = "Profile has no saved credential".to_owned();
+            return;
+        };
+        match self.credentials.delete(credential_id) {
+            Ok(()) => {
+                self.save_profiles();
+                self.status = "Credential deleted".to_owned();
+            }
+            Err(err) => self.status = format!("Credential delete failed: {err}"),
+        }
     }
 
     fn disconnect_selected_session(&mut self) {
@@ -374,7 +566,9 @@ impl eframe::App for AivanaApp {
                     .append_event(session.id, None, kind, message.clone());
                 if matches!(
                     event,
-                    EngineEvent::Error { .. } | EngineEvent::Disconnected { .. }
+                    EngineEvent::Error { .. }
+                        | EngineEvent::Disconnected { .. }
+                        | EngineEvent::Diagnostic { .. }
                 ) {
                     self.ai_diagnosis = message;
                 }
@@ -400,16 +594,29 @@ impl eframe::App for AivanaApp {
 
         let root = ui.max_rect();
         ui.painter()
-            .rect_filled(root, CornerRadius::ZERO, Color32::from_rgb(239, 242, 246));
+            .rect_filled(root, CornerRadius::ZERO, tw::SLATE_100);
 
-        let top_height = 66.0;
-        let nav_width = 236.0;
+        let compact_shell = root.width() < 920.0;
+        let top_height = if compact_shell { 42.0 } else { 46.0 };
+        let nav_width = if compact_shell { 0.0 } else { 188.0 };
+        let nav_height = if compact_shell { 44.0 } else { 0.0 };
         let top_rect = Rect::from_min_max(root.min, pos2(root.max.x, root.min.y + top_height));
-        let nav_rect = Rect::from_min_max(
-            pos2(root.min.x, top_rect.max.y),
-            pos2(root.min.x + nav_width, root.max.y),
-        );
-        let content_rect = Rect::from_min_max(pos2(nav_rect.max.x, top_rect.max.y), root.max);
+        let nav_rect = if compact_shell {
+            Rect::from_min_max(
+                pos2(root.min.x, top_rect.max.y),
+                pos2(root.max.x, top_rect.max.y + nav_height),
+            )
+        } else {
+            Rect::from_min_max(
+                pos2(root.min.x, top_rect.max.y),
+                pos2(root.min.x + nav_width, root.max.y),
+            )
+        };
+        let content_rect = if compact_shell {
+            Rect::from_min_max(pos2(root.min.x, nav_rect.max.y), root.max)
+        } else {
+            Rect::from_min_max(pos2(nav_rect.max.x, top_rect.max.y), root.max)
+        };
 
         let mut top_ui = ui.new_child(
             UiBuilder::new()
@@ -417,51 +624,52 @@ impl eframe::App for AivanaApp {
                 .layout(Layout::left_to_right(Align::Center)),
         );
         Frame::NONE
-            .fill(Color32::from_rgb(15, 20, 29))
-            .inner_margin(Margin::symmetric(22, 0))
+            .fill(tw::SLATE_950)
+            .inner_margin(Margin::symmetric(16, 0))
             .show(&mut top_ui, |ui| {
                 ui.set_min_height(top_height);
                 ui.label(
                     RichText::new("Aivana")
-                        .font(FontId::proportional(27.0))
+                        .font(FontId::proportional(22.0))
                         .color(Color32::WHITE),
                 );
                 ui.label(
                     RichText::new("Rust RDP Client")
-                        .font(FontId::proportional(15.0))
-                        .color(Color32::from_rgb(176, 185, 201)),
+                        .font(FontId::proportional(13.0))
+                        .color(tw::SLATE_300),
                 );
                 ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                     ui.label(
                         RichText::new(&self.status)
-                            .font(FontId::proportional(13.0))
-                            .color(Color32::from_rgb(133, 206, 255)),
+                            .font(FontId::proportional(12.0))
+                            .color(tw::SKY_300),
                     );
                 });
             });
 
-        let mut nav_ui = ui.new_child(
-            UiBuilder::new()
-                .max_rect(nav_rect)
-                .layout(Layout::top_down(Align::Min)),
-        );
+        let mut nav_ui = ui.new_child(UiBuilder::new().max_rect(nav_rect).layout(
+            if compact_shell {
+                Layout::left_to_right(Align::Center)
+            } else {
+                Layout::top_down(Align::Min)
+            },
+        ));
         Frame::NONE
-            .fill(Color32::from_rgb(24, 30, 41))
-            .inner_margin(Margin::symmetric(18, 18))
+            .fill(tw::SLATE_900)
+            .inner_margin(if compact_shell {
+                Margin::symmetric(8, 6)
+            } else {
+                Margin::symmetric(10, 12)
+            })
             .show(&mut nav_ui, |ui| {
-                ui.set_min_width(nav_width - 36.0);
-                ui.add_space(4.0);
+                if !compact_shell {
+                    ui.set_min_width(nav_width - 20.0);
+                }
                 nav_button(ui, &mut self.view, View::Connections, "Connections");
                 nav_button(ui, &mut self.view, View::Sessions, "Sessions");
                 nav_button(ui, &mut self.view, View::Approvals, "Approvals");
                 nav_button(ui, &mut self.view, View::Workspaces, "Workspaces");
                 nav_button(ui, &mut self.view, View::Settings, "Settings");
-                ui.add_space(26.0);
-                stat_block(ui, "Active sessions", self.sessions.len().to_string());
-                ui.add_space(10.0);
-                stat_block(ui, "Profiles", self.profiles.len().to_string());
-                ui.add_space(10.0);
-                stat_block(ui, "Approvals", self.approvals.len().to_string());
             });
 
         let mut content_ui = ui.new_child(
@@ -470,18 +678,26 @@ impl eframe::App for AivanaApp {
                 .layout(Layout::top_down(Align::Min)),
         );
         Frame::NONE
-            .fill(Color32::from_rgb(239, 242, 246))
-            .inner_margin(Margin::same(24))
+            .fill(tw::SLATE_100)
+            .inner_margin(if self.view == View::Sessions {
+                Margin::same(10)
+            } else {
+                Margin::same(24)
+            })
             .show(&mut content_ui, |ui| {
-                ScrollArea::vertical()
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| match self.view {
-                        View::Connections => self.connections_view(ui),
-                        View::Sessions => self.sessions_view(ui),
-                        View::Approvals => self.approvals_view(ui),
-                        View::Workspaces => self.workspaces_view(ui),
-                        View::Settings => self.settings_view(ui),
-                    });
+                if self.view == View::Sessions {
+                    self.sessions_view(ui);
+                } else {
+                    ScrollArea::vertical()
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| match self.view {
+                            View::Connections => self.connections_view(ui),
+                            View::Sessions => unreachable!("sessions are rendered without scroll"),
+                            View::Approvals => self.approvals_view(ui),
+                            View::Workspaces => self.workspaces_view(ui),
+                            View::Settings => self.settings_view(ui),
+                        });
+                }
             });
 
         ctx.request_repaint_after(std::time::Duration::from_millis(250));
@@ -496,64 +712,49 @@ impl AivanaApp {
             "Manage saved endpoints and launch sessions.",
         );
 
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.add_sized(
-                [ui.available_width().min(420.0), 38.0],
+                [ui.available_width().min(360.0), 42.0],
                 egui::TextEdit::singleline(&mut self.search)
                     .hint_text("Search name, host, group, tag"),
             );
-            if ui
-                .add_sized([82.0, 38.0], egui::Button::new("New"))
-                .clicked()
-            {
+            if action_button(ui, "New", 88.0, ActionTone::Neutral).clicked() {
                 self.start_new_profile();
             }
-            if ui
-                .add_sized([82.0, 38.0], egui::Button::new("Edit"))
-                .clicked()
-            {
+            if action_button(ui, "Edit", 88.0, ActionTone::Neutral).clicked() {
                 self.edit_selected_profile();
             }
-            if ui
-                .add_sized([104.0, 38.0], egui::Button::new("Connect"))
-                .clicked()
-            {
+            if action_button(ui, "Connect", 108.0, ActionTone::Primary).clicked() {
                 self.connect_selected();
             }
-            if ui
-                .add_sized([128.0, 38.0], egui::Button::new("Trust Cert"))
-                .clicked()
-            {
+            if action_button(ui, "Trust Cert", 122.0, ActionTone::Primary).clicked() {
                 self.trust_selected_certificate();
             }
+            if action_button(ui, "Reject Cert", 126.0, ActionTone::Danger).clicked() {
+                self.reject_selected_certificate();
+            }
+            if action_button(ui, "Test Cred", 112.0, ActionTone::Neutral).clicked() {
+                self.test_selected_credential();
+            }
+            if action_button(ui, "Delete Cred", 124.0, ActionTone::Danger).clicked() {
+                self.delete_selected_credential();
+            }
         });
-        ui.label(RichText::new(&self.certificate_notice).color(Color32::from_rgb(93, 103, 119)));
+        ui.label(RichText::new(&self.certificate_notice).color(tw::SLATE_600));
+        ui.label(
+            RichText::new(format!("Status: {}", self.status))
+                .strong()
+                .color(tw::SLATE_700),
+        );
 
         ui.add_space(14.0);
-        let available_width = ui.available_width();
-        if available_width < 860.0 {
-            self.profile_table(ui);
-            ui.add_space(14.0);
-            self.profile_editor(ui);
-        } else {
-            ui.horizontal_top(|ui| {
-                let editor_width = 350.0;
-                ui.scope(|ui| {
-                    ui.set_width((available_width - editor_width - 16.0).max(420.0));
-                    self.profile_table(ui);
-                });
-                ui.add_space(6.0);
-                ui.scope(|ui| {
-                    ui.set_width(editor_width);
-                    self.profile_editor(ui);
-                });
-            });
-        }
+        self.profile_editor(ui);
+        ui.add_space(14.0);
+        self.profile_table(ui);
     }
 
     fn profile_table(&mut self, ui: &mut Ui) {
         panel(ui, |ui| {
-            ui.set_min_height(430.0);
             ui.heading("Profiles");
             ui.add_space(8.0);
 
@@ -563,201 +764,352 @@ impl AivanaApp {
                 .map(|profile| profile.id)
                 .collect::<Vec<_>>();
 
-            TableBuilder::new(ui)
-                .striped(true)
-                .column(Column::auto())
-                .column(Column::remainder())
-                .column(Column::auto())
-                .column(Column::auto())
-                .column(Column::auto())
-                .header(24.0, |mut header| {
-                    header.col(|ui| {
-                        ui.label("Fav");
-                    });
-                    header.col(|ui| {
-                        ui.label("Name");
-                    });
-                    header.col(|ui| {
-                        ui.label("Host");
-                    });
-                    header.col(|ui| {
-                        ui.label("Protocol");
-                    });
-                    header.col(|ui| {
-                        ui.label("Group");
-                    });
-                })
-                .body(|body| {
-                    body.rows(34.0, rows.len(), |mut row| {
-                        let profile_id = rows[row.index()];
-                        let profile = self
-                            .profiles
-                            .iter()
-                            .find(|profile| profile.id == profile_id)
-                            .expect("filtered id must exist");
-                        let selected = self.selected_profile == Some(profile.id);
+            for profile_id in rows {
+                let Some(profile) = self
+                    .profiles
+                    .iter()
+                    .find(|profile| profile.id == profile_id)
+                else {
+                    continue;
+                };
+                let selected = self.selected_profile == Some(profile.id);
+                let row_fill = if selected { tw::BLUE_50 } else { tw::WHITE };
+                let stroke = if selected {
+                    Stroke::new(1.0, tw::BLUE_500)
+                } else {
+                    Stroke::new(1.0, tw::SLATE_200)
+                };
+                let row_width = ui.available_width().max(260.0);
+                let (rect, response) =
+                    ui.allocate_exact_size(Vec2::new(row_width, 74.0), Sense::click());
+                let painter = ui.painter_at(rect);
+                painter.rect(
+                    rect,
+                    CornerRadius::same(8),
+                    row_fill,
+                    stroke,
+                    StrokeKind::Outside,
+                );
 
-                        row.col(|ui| {
-                            ui.label(if profile.favorite { "*" } else { "" });
-                        });
-                        row.col(|ui| {
-                            if ui.selectable_label(selected, &profile.name).clicked() {
-                                self.selected_profile = Some(profile.id);
-                            }
-                        });
-                        row.col(|ui| {
-                            ui.label(format!("{}:{}", profile.host, profile.port));
-                        });
-                        row.col(|ui| {
-                            ui.label(profile.protocol.label());
-                        });
-                        row.col(|ui| {
-                            ui.label(&profile.group);
-                        });
-                    });
-                });
+                let favorite = if profile.favorite { "* " } else { "" };
+                painter.text(
+                    pos2(rect.left() + 14.0, rect.top() + 14.0),
+                    egui::Align2::LEFT_TOP,
+                    format!("{favorite}{}", profile.name),
+                    FontId::proportional(19.0),
+                    tw::SLATE_900,
+                );
+                painter.text(
+                    pos2(rect.left() + 14.0, rect.top() + 42.0),
+                    egui::Align2::LEFT_TOP,
+                    format!(
+                        "{}:{}  |  {}  |  {}",
+                        profile.host,
+                        profile.port,
+                        profile.protocol.label(),
+                        profile.group
+                    ),
+                    FontId::proportional(15.0),
+                    tw::SLATE_600,
+                );
+                if selected {
+                    painter.text(
+                        pos2(rect.right() - 14.0, rect.top() + 14.0),
+                        egui::Align2::RIGHT_TOP,
+                        "Selected",
+                        FontId::proportional(14.0),
+                        tw::BLUE_700,
+                    );
+                }
+                if response.clicked() {
+                    self.load_profile_into_editor(profile.id);
+                }
+                ui.add_space(6.0);
+            }
         });
     }
 
     fn profile_editor(&mut self, ui: &mut Ui) {
         panel(ui, |ui| {
-            ui.set_min_height(430.0);
             ui.heading(if self.editing_profile.is_some() {
                 "Edit Profile"
             } else {
                 "New Profile"
             });
+            ui.label(
+                RichText::new(self.credential_status_label())
+                    .strong()
+                    .color(tw::SLATE_600),
+            );
             ui.add_space(8.0);
-            text_field(ui, "Name", &mut self.draft.name);
-            text_field(ui, "Host", &mut self.draft.host);
-            text_field(ui, "Port", &mut self.draft.port);
-            text_field(ui, "Username", &mut self.draft.username);
-            password_field(ui, "Password", &mut self.draft.password);
-            text_field(ui, "Domain", &mut self.draft.domain);
-            text_field(ui, "Group", &mut self.draft.group);
-            text_field(ui, "Tags", &mut self.draft.tags);
-            ui.checkbox(&mut self.draft.favorite, "Favorite");
+            let draft = &mut self.draft;
+            ui.columns(2, |columns| {
+                text_field(&mut columns[0], "Name", &mut draft.name);
+                text_field(&mut columns[1], "Host", &mut draft.host);
+            });
+            ui.columns(2, |columns| {
+                text_field(&mut columns[0], "Port", &mut draft.port);
+                text_field(&mut columns[1], "Username", &mut draft.username);
+            });
+            ui.columns(2, |columns| {
+                text_field(&mut columns[0], "Domain", &mut draft.domain);
+                text_field(&mut columns[1], "Group", &mut draft.group);
+            });
+            password_field(ui, "Password", &mut draft.password);
+            text_field(ui, "Tags", &mut draft.tags);
+            ui.checkbox(&mut draft.favorite, "Favorite");
             ui.add_space(12.0);
-            if ui.button("Save Profile").clicked() {
+            if action_button(ui, "Save Profile", 132.0, ActionTone::Primary).clicked() {
                 self.save_draft();
             }
         });
     }
 
     fn sessions_view(&mut self, ui: &mut Ui) {
-        page_header(
-            ui,
-            "Remote Sessions",
-            "Native Rust RDP handshake and session runtime.",
-        );
+        self.session_command_bar(ui);
 
-        ui.horizontal(|ui| {
-            if ui.button("Disconnect").clicked() {
-                self.disconnect_selected_session();
-            }
-            if ui.button("Reconnect").clicked() {
-                self.reconnect_selected_session();
-            }
-            ui.label(format!("{} running", self.sessions.len()));
-        });
-
-        ui.add_space(14.0);
         let available_width = ui.available_width();
-        if available_width < 820.0 {
-            self.session_list_panel(ui);
-            ui.add_space(14.0);
-            self.session_details_panel(ui);
-        } else {
-            ui.horizontal_top(|ui| {
-                ui.scope(|ui| {
-                    ui.set_width(330.0);
-                    self.session_list_panel(ui);
-                });
+        if available_width < 760.0 {
+            self.session_tabs(ui);
+            ui.add_space(6.0);
+            self.session_workspace(ui);
+            return;
+        }
 
-                ui.add_space(6.0);
+        ui.horizontal_top(|ui| {
+            ui.scope(|ui| {
+                ui.set_width((available_width * 0.15).clamp(190.0, 245.0));
+                self.session_list_panel(ui);
+            });
+
+            ui.add_space(4.0);
+            ui.scope(|ui| {
+                let inspector_width = if self.session_inspector_open {
+                    (available_width * 0.22).clamp(260.0, 360.0)
+                } else {
+                    0.0
+                };
+                ui.set_width((ui.available_width() - inspector_width - 6.0).max(360.0));
+                self.session_workspace(ui);
+            });
+
+            if self.session_inspector_open {
+                ui.add_space(4.0);
                 ui.scope(|ui| {
-                    ui.set_width((available_width - 352.0).max(420.0));
-                    self.session_details_panel(ui);
+                    ui.set_width((available_width * 0.22).clamp(260.0, 360.0));
+                    self.session_inspector(ui);
+                });
+            }
+        });
+    }
+
+    fn session_command_bar(&mut self, ui: &mut Ui) {
+        Frame::new()
+            .fill(tw::WHITE)
+            .stroke(Stroke::new(1.0, tw::SLATE_200))
+            .corner_radius(CornerRadius::same(6))
+            .inner_margin(Margin::symmetric(8, 6))
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(
+                        RichText::new("Remote")
+                            .size(16.0)
+                            .strong()
+                            .color(tw::SLATE_900),
+                    );
+                    if ui.button("Disconnect").clicked() {
+                        self.disconnect_selected_session();
+                    }
+                    if ui.button("Reconnect").clicked() {
+                        self.reconnect_selected_session();
+                    }
+                    if ui
+                        .selectable_label(self.session_inspector_open, "Inspector")
+                        .clicked()
+                    {
+                        self.session_inspector_open = !self.session_inspector_open;
+                    }
+                    ui.label(
+                        RichText::new(format!("{} running", self.sessions.len()))
+                            .size(12.0)
+                            .color(tw::SLATE_600),
+                    );
                 });
             });
-        }
+        ui.add_space(6.0);
+    }
+
+    fn session_tabs(&mut self, ui: &mut Ui) {
+        Frame::new()
+            .fill(tw::WHITE)
+            .stroke(Stroke::new(1.0, tw::SLATE_200))
+            .corner_radius(CornerRadius::same(6))
+            .inner_margin(Margin::symmetric(8, 6))
+            .show(ui, |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    let ids = self
+                        .sessions
+                        .iter()
+                        .map(|session| session.id)
+                        .collect::<Vec<_>>();
+                    for id in ids {
+                        let session = self
+                            .sessions
+                            .iter()
+                            .find(|session| session.id == id)
+                            .expect("session id must exist");
+                        let selected = self.selected_session == Some(session.id);
+                        if ui
+                            .selectable_label(
+                                selected,
+                                format!("{}  {}", session.title, session.status.label()),
+                            )
+                            .clicked()
+                        {
+                            self.selected_session = Some(session.id);
+                        }
+                    }
+                });
+            });
     }
 
     fn session_list_panel(&mut self, ui: &mut Ui) {
-        panel(ui, |ui| {
-            ui.set_min_height(430.0);
-            ui.heading("Sessions");
-            ui.add_space(8.0);
-            let ids = self
-                .sessions
-                .iter()
-                .map(|session| session.id)
-                .collect::<Vec<_>>();
-            for id in ids {
-                let session = self
+        Frame::new()
+            .fill(tw::WHITE)
+            .stroke(Stroke::new(1.0, tw::SLATE_200))
+            .corner_radius(CornerRadius::same(6))
+            .inner_margin(Margin::same(10))
+            .show(ui, |ui| {
+                ui.set_min_height(ui.available_height().clamp(220.0, 900.0));
+                ui.label(
+                    RichText::new("Sessions")
+                        .size(15.0)
+                        .strong()
+                        .color(tw::SLATE_700),
+                );
+                ui.add_space(6.0);
+                let ids = self
                     .sessions
                     .iter()
-                    .find(|session| session.id == id)
-                    .expect("session id must exist");
-                let selected = self.selected_session == Some(session.id);
-                if ui
-                    .selectable_label(
-                        selected,
-                        format!("{}  -  {}", session.title, session.status.label()),
-                    )
-                    .clicked()
-                {
-                    self.selected_session = Some(session.id);
+                    .map(|session| session.id)
+                    .collect::<Vec<_>>();
+                for id in ids {
+                    let session = self
+                        .sessions
+                        .iter()
+                        .find(|session| session.id == id)
+                        .expect("session id must exist");
+                    let selected = self.selected_session == Some(session.id);
+                    if ui
+                        .selectable_label(
+                            selected,
+                            format!("{}  {}", session.title, session.status.label()),
+                        )
+                        .clicked()
+                    {
+                        self.selected_session = Some(session.id);
+                    }
                 }
-            }
-        });
+            });
     }
 
-    fn session_details_panel(&mut self, ui: &mut Ui) {
-        panel(ui, |ui| {
-            ui.set_min_height(430.0);
-            if let Some(session) = self.selected_session() {
-                let session_id = session.id;
-                ui.heading(&session.title);
-                ui.label(format!("Profile: {}", session.profile_id));
-                ui.label(format!(
-                    "Connected: {}",
-                    session.connected_at.format("%H:%M:%S")
-                ));
-                if let Some(error) = &session.last_error {
-                    ui.colored_label(Color32::from_rgb(171, 58, 58), error);
+    fn session_workspace(&mut self, ui: &mut Ui) {
+        Frame::new()
+            .fill(tw::SLATE_950)
+            .stroke(Stroke::new(1.0, tw::SLATE_200))
+            .corner_radius(CornerRadius::same(6))
+            .inner_margin(Margin::same(6))
+            .show(ui, |ui| {
+                ui.set_min_height(ui.available_height().clamp(320.0, 1200.0));
+                if let Some(session) = self.selected_session().cloned() {
+                    let session_id = session.id;
+                    ui.horizontal(|ui| {
+                        ui.label(
+                            RichText::new(&session.title)
+                                .size(14.0)
+                                .strong()
+                                .color(tw::WHITE),
+                        );
+                        ui.add_space(8.0);
+                        ui.label(
+                            RichText::new(session.status.label())
+                                .size(12.0)
+                                .strong()
+                                .color(match session.status {
+                                    SessionStatus::Connected => tw::SKY_300,
+                                    SessionStatus::Failed | SessionStatus::Disconnected => {
+                                        tw::RED_700
+                                    }
+                                    _ => tw::SLATE_300,
+                                }),
+                        );
+                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                            ui.label(
+                                RichText::new(format!(
+                                    "{}%  {:.0}ms  {:.0}fps",
+                                    session.metrics.quality_score,
+                                    session.metrics.latency_ms,
+                                    session.metrics.frame_rate
+                                ))
+                                .size(12.0)
+                                .color(tw::SLATE_300),
+                            );
+                        });
+                    });
+                    if let Some(error) = &session.last_error {
+                        ui.colored_label(tw::RED_700, error);
+                    }
+                    ui.add_space(6.0);
+                    self.remote_canvas(ui, session_id);
+                } else {
+                    ui.heading("No session selected");
+                    ui.label("Connect to a profile to start a remote desktop session.");
                 }
-                ui.add_space(10.0);
-                metric(ui, "Quality", format!("{}%", session.metrics.quality_score));
-                metric(
-                    ui,
-                    "Latency",
-                    format!("{:.0} ms", session.metrics.latency_ms),
+            });
+    }
+
+    fn session_inspector(&mut self, ui: &mut Ui) {
+        Frame::new()
+            .fill(tw::WHITE)
+            .stroke(Stroke::new(1.0, tw::SLATE_200))
+            .corner_radius(CornerRadius::same(6))
+            .inner_margin(Margin::same(10))
+            .show(ui, |ui| {
+                ui.set_min_height(ui.available_height().clamp(320.0, 1200.0));
+                ui.label(
+                    RichText::new("Inspector")
+                        .size(15.0)
+                        .strong()
+                        .color(tw::SLATE_800),
                 );
-                metric(
-                    ui,
-                    "Bandwidth",
-                    format!("{:.0} Mbps", session.metrics.bandwidth_mbps),
+                ui.add_space(8.0);
+                if let Some(session) = self.selected_session() {
+                    metric(ui, "Status", session.status.label().to_owned());
+                    metric(ui, "Quality", format!("{}%", session.metrics.quality_score));
+                    metric(
+                        ui,
+                        "Latency",
+                        format!("{:.0} ms", session.metrics.latency_ms),
+                    );
+                    metric(
+                        ui,
+                        "Frame rate",
+                        format!("{:.0} fps", session.metrics.frame_rate),
+                    );
+                    metric(
+                        ui,
+                        "Bandwidth",
+                        format!("{:.0} Mbps", session.metrics.bandwidth_mbps),
+                    );
+                }
+                ui.separator();
+                ui.label(RichText::new("Diagnostics").strong().color(tw::SLATE_800));
+                ui.label(
+                    RichText::new(&self.ai_diagnosis)
+                        .size(12.0)
+                        .color(tw::SLATE_600),
                 );
-                metric(
-                    ui,
-                    "Frame rate",
-                    format!("{:.0} fps", session.metrics.frame_rate),
-                );
-                metric(
-                    ui,
-                    "Packet loss",
-                    format!("{:.1}%", session.metrics.packet_loss_pct),
-                );
-                ui.add_space(16.0);
-                self.remote_canvas(ui, session_id);
-                ui.add_space(12.0);
-                self.ai_session_panel(ui, session_id);
-            } else {
-                ui.heading("No session selected");
-                ui.label("Connect to a profile to start a remote desktop session.");
-            }
-        });
+            });
     }
 
     fn approvals_view(&mut self, ui: &mut Ui) {
@@ -799,6 +1151,37 @@ impl AivanaApp {
                 if approval.status == ApprovalStatus::Pending {
                     updated.push(approval);
                 } else if let Some(session_id) = approval.session_id {
+                    if matches!(
+                        approval.status,
+                        ApprovalStatus::AllowedOnce | ApprovalStatus::AllowedForRunbook
+                    ) {
+                        match self.engine.send_input(session_id, approval.action.clone()) {
+                            Ok(()) => {
+                                if let Some(frame) = self.latest_frames.get(&session_id) {
+                                    let verification = ComputerUseAgent::default().verify_step(
+                                        session_id,
+                                        frame.frame_hash,
+                                        frame,
+                                    );
+                                    self.timeline.append_event(
+                                        session_id,
+                                        None,
+                                        SessionEventKind::AiAction,
+                                        format!(
+                                            "Verification after approval: {}",
+                                            verification.evidence
+                                        ),
+                                    );
+                                }
+                                self.computer_use_status =
+                                    format!("Approved action executed: {}", approval.description);
+                            }
+                            Err(err) => {
+                                self.computer_use_status =
+                                    format!("Approved action could not execute: {err}");
+                            }
+                        }
+                    }
                     self.timeline.append_event(
                         session_id,
                         None,
@@ -838,6 +1221,24 @@ impl AivanaApp {
                 for issue in memory.known_issues.iter().rev().take(4) {
                     ui.label(format!("- {issue}"));
                 }
+            }
+            if ui.button("Record successful safe fix").clicked() {
+                self.memory.record_successful_fix(
+                    &selected_host,
+                    None,
+                    "Operator confirmed latest safe diagnostic workflow as useful.",
+                );
+                self.status = "Host memory updated".to_owned();
+            }
+            if let Some(workspace) = self.workspaces.all().first() {
+                if self.memory.workspace_note_count(workspace.id) == 0 {
+                    self.memory
+                        .record_workspace_note(workspace.id, "Workspace cockpit initialized.");
+                }
+                ui.label(format!(
+                    "Workspace memory notes: {}",
+                    self.memory.workspace_note_count(workspace.id)
+                ));
             }
             ui.add_space(10.0);
             ui.heading("Runbooks");
@@ -891,6 +1292,9 @@ impl AivanaApp {
                     let observation = agent.observe(frame);
                     let action =
                         agent.plan_next_step(&observation, "Diagnose aktuellen UI-Zustand");
+                    if let Ok(input_action) = agent.execute_step(&action) {
+                        let _ = self.engine.send_input(session_id, input_action);
+                    }
                     self.computer_use_status = format!(
                         "{} | decision: {:?} | risk: {:?}",
                         observation.summary, action.decision, action.risk
@@ -933,7 +1337,10 @@ impl AivanaApp {
             }
             if ui.button("Runbook recommendation").clicked() {
                 let context = self.session_messages(session_id).join("\n");
-                let recommendation = self.ai.recommend_runbook(&context);
+                let recommendation = self
+                    .runbooks
+                    .recommend(&context)
+                    .unwrap_or_else(|| self.ai.recommend_runbook(&context));
                 self.computer_use_status = format!(
                     "{} ({:.0}%): {}",
                     recommendation.name,
@@ -952,7 +1359,9 @@ impl AivanaApp {
                     return;
                 };
                 if let Some(execution) = self.runbooks.start(session_id, runbook_id) {
+                    self.active_runbook_execution = Some(execution.id);
                     if let Some(step) = self.runbooks.next_step(execution.id) {
+                        let _ = self.engine.send_input(session_id, step.action.clone());
                         self.timeline.append_event(
                             session_id,
                             None,
@@ -968,9 +1377,62 @@ impl AivanaApp {
                     }
                 }
             }
+            if ui.button("Next runbook step").clicked() {
+                let Some(execution_id) = self.active_runbook_execution else {
+                    self.computer_use_status = "No active runbook execution.".to_owned();
+                    return;
+                };
+                if let Some(step) = self.runbooks.next_step(execution_id) {
+                    match self.engine.send_input(session_id, step.action.clone()) {
+                        Ok(()) => {
+                            self.computer_use_status =
+                                format!("Runbook step executed: {}", step.title);
+                            self.timeline.append_event(
+                                session_id,
+                                None,
+                                SessionEventKind::AiAction,
+                                format!("Runbook step executed: {}", step.title),
+                            );
+                        }
+                        Err(err) => {
+                            self.computer_use_status = format!("Runbook step failed: {err}");
+                        }
+                    }
+                } else {
+                    self.computer_use_status = "Runbook has no next step.".to_owned();
+                    self.active_runbook_execution = None;
+                }
+            }
+            if ui.button("Pause runbook").clicked() {
+                if let Some(execution_id) = self.active_runbook_execution {
+                    self.runbooks.pause(execution_id);
+                    self.computer_use_status = "Runbook paused.".to_owned();
+                }
+            }
+            if ui.button("Resume runbook").clicked() {
+                if let Some(execution_id) = self.active_runbook_execution {
+                    self.runbooks.resume(execution_id);
+                    self.computer_use_status = "Runbook resumed.".to_owned();
+                }
+            }
+            if ui.button("Abort runbook").clicked() {
+                if let Some(execution_id) = self.active_runbook_execution.take() {
+                    self.runbooks.abort(execution_id);
+                    self.timeline.append_event(
+                        session_id,
+                        None,
+                        SessionEventKind::AiAction,
+                        "Runbook aborted by operator.".to_owned(),
+                    );
+                    self.computer_use_status = "Runbook aborted.".to_owned();
+                }
+            }
             if ui.button("Export Incident").clicked() {
                 let report = self.timeline.export_incident_markdown(session_id);
                 let evidence_json = self.timeline.export_evidence_json(session_id);
+                let saved = save_incident_files(session_id, &report, &evidence_json)
+                    .map(|path| format!(" saved to {}", path.display()))
+                    .unwrap_or_else(|err| format!(" save failed: {err}"));
                 let messages = self
                     .timeline
                     .events_for_session(session_id)
@@ -979,9 +1441,10 @@ impl AivanaApp {
                     .collect::<Vec<_>>();
                 self.ai_diagnosis = self.ai.summarize_session(&messages).headline;
                 self.computer_use_status = format!(
-                    "Incident markdown {} bytes, evidence JSON {} bytes",
+                    "Incident markdown {} bytes, evidence JSON {} bytes;{}",
                     report.len(),
-                    evidence_json.len()
+                    evidence_json.len(),
+                    saved
                 );
             }
             if ui.button("Ticket in 30 seconds").clicked() {
@@ -1006,15 +1469,30 @@ impl AivanaApp {
             .unwrap_or_else(|| "unknown-host".to_owned())
     }
 
+    fn credential_status_label(&self) -> String {
+        let Some(profile) = self.selected_profile() else {
+            return "Credential: kein Profil ausgewaehlt".to_owned();
+        };
+        match profile.credential_id {
+            Some(credential_id) if self.credentials.has_credential(credential_id) => {
+                "Credential: gespeichert".to_owned()
+            }
+            Some(_) => "Credential: Referenz vorhanden, Secret fehlt".to_owned(),
+            None => "Credential: fehlt, Passwort eintragen und Save Profile klicken".to_owned(),
+        }
+    }
+
     fn remote_canvas(&mut self, ui: &mut Ui, session_id: Uuid) {
-        let desired_size = Vec2::new(ui.available_width(), 360.0);
+        let width = ui.available_width().max(280.0);
+        let height = ui.available_height().clamp(260.0, 1400.0);
+        let desired_size = Vec2::new(width, height);
         let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click_and_drag());
         let painter = ui.painter_at(rect);
         painter.rect(
             rect,
-            CornerRadius::same(8),
-            Color32::from_rgb(19, 24, 32),
-            Stroke::new(1.0, Color32::from_rgb(69, 79, 96)),
+            CornerRadius::same(4),
+            tw::SLATE_950,
+            Stroke::new(1.0, tw::SLATE_800),
             StrokeKind::Outside,
         );
 
@@ -1023,7 +1501,7 @@ impl AivanaApp {
             self.latest_frames.get(&session_id),
         ) {
             let image_rect = fit_rect(
-                rect.shrink(8.0),
+                rect.shrink(2.0),
                 Vec2::new(f32::from(frame.width), f32::from(frame.height)),
             );
             let _ = self.engine.resize(
@@ -1107,13 +1585,52 @@ impl AivanaApp {
                     .engine
                     .send_input(session_id, InputAction::TypeText { text: typed });
             }
+            let hotkeys = ui.input(|input| {
+                input
+                    .events
+                    .iter()
+                    .filter_map(|event| match event {
+                        egui::Event::Key {
+                            key,
+                            pressed: true,
+                            modifiers,
+                            ..
+                        } => key_event_to_hotkey(*key, *modifiers),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            });
+            if response.has_focus() {
+                for keys in hotkeys {
+                    let _ = self
+                        .engine
+                        .send_input(session_id, InputAction::Hotkey { keys });
+                }
+            }
         } else {
+            let message = self
+                .sessions
+                .iter()
+                .find(|session| session.id == session_id)
+                .map(|session| match session.status {
+                    SessionStatus::Connected => {
+                        "Connected - waiting for first remote desktop frame"
+                    }
+                    SessionStatus::Connecting | SessionStatus::Authenticating => {
+                        "Connecting to native RDP session"
+                    }
+                    SessionStatus::Failed => "RDP session failed before a framebuffer arrived",
+                    SessionStatus::Disconnected => "RDP session is disconnected",
+                    SessionStatus::Reconnecting => "Reconnecting to native RDP session",
+                    SessionStatus::Suspended => "RDP session is suspended",
+                })
+                .unwrap_or("Waiting for native RDP framebuffer");
             painter.text(
                 rect.center(),
                 egui::Align2::CENTER_CENTER,
-                "Waiting for native RDP framebuffer",
+                message,
                 FontId::proportional(20.0),
-                Color32::from_rgb(190, 202, 220),
+                tw::SLATE_300,
             );
         }
     }
@@ -1121,26 +1638,85 @@ impl AivanaApp {
 
 fn configure_style(ctx: &Context) {
     let mut style = (*ctx.global_style()).clone();
+    style.visuals = egui::Visuals::light();
     style.visuals.widgets.inactive.corner_radius = CornerRadius::same(6);
     style.visuals.widgets.hovered.corner_radius = CornerRadius::same(6);
     style.visuals.widgets.active.corner_radius = CornerRadius::same(6);
+    style.visuals.override_text_color = None;
+    style.visuals.panel_fill = tw::SLATE_100;
+    style.visuals.window_fill = tw::WHITE;
+    style.visuals.extreme_bg_color = tw::WHITE;
+    style.visuals.faint_bg_color = tw::SLATE_50;
+    style.visuals.selection.bg_fill = tw::BLUE_600;
+    style.visuals.selection.stroke = Stroke::new(1.0, tw::WHITE);
+    style.visuals.widgets.noninteractive.fg_stroke = Stroke::new(1.0, tw::SLATE_800);
+    style.visuals.widgets.inactive.fg_stroke = Stroke::new(1.0, tw::SLATE_800);
+    style.visuals.widgets.hovered.fg_stroke = Stroke::new(1.0, tw::SLATE_950);
+    style.visuals.widgets.active.fg_stroke = Stroke::new(1.0, tw::SLATE_950);
+    style.visuals.widgets.inactive.bg_fill = tw::SLATE_50;
+    style.visuals.widgets.hovered.bg_fill = tw::BLUE_50;
+    style.visuals.widgets.active.bg_fill = tw::BLUE_100;
+    style.text_styles.insert(
+        TextStyle::Heading,
+        FontId::new(30.0, FontFamily::Proportional),
+    );
+    style
+        .text_styles
+        .insert(TextStyle::Body, FontId::new(17.0, FontFamily::Proportional));
+    style.text_styles.insert(
+        TextStyle::Button,
+        FontId::new(16.0, FontFamily::Proportional),
+    );
+    style.text_styles.insert(
+        TextStyle::Small,
+        FontId::new(14.0, FontFamily::Proportional),
+    );
     style.spacing.item_spacing = Vec2::new(10.0, 8.0);
+    style.spacing.button_padding = Vec2::new(14.0, 9.0);
     ctx.set_global_style(style);
+}
+
+#[derive(Clone, Copy)]
+enum ActionTone {
+    Neutral,
+    Primary,
+    Danger,
+}
+
+fn action_button(ui: &mut Ui, label: &str, width: f32, tone: ActionTone) -> egui::Response {
+    let (fill, text, stroke) = match tone {
+        ActionTone::Neutral => (tw::WHITE, tw::SLATE_800, tw::SLATE_300),
+        ActionTone::Primary => (tw::BLUE_600, tw::WHITE, tw::BLUE_700),
+        ActionTone::Danger => (tw::RED_600, tw::WHITE, tw::RED_700),
+    };
+
+    ui.add_sized(
+        [width, 42.0],
+        egui::Button::new(RichText::new(label).color(text).strong())
+            .fill(fill)
+            .stroke(Stroke::new(1.0, stroke)),
+    )
 }
 
 fn nav_button(ui: &mut Ui, view: &mut View, target: View, label: &str) {
     let selected = *view == target;
+    let compact = ui.available_width() > 360.0 && ui.available_height() < 64.0;
+    let width = if compact {
+        (ui.available_width() / 5.4).clamp(82.0, 150.0)
+    } else {
+        ui.available_width().max(120.0)
+    };
     let response = ui.add_sized(
-        [188.0, 38.0],
+        [width, if compact { 30.0 } else { 38.0 }],
         egui::Button::new(RichText::new(label).color(if selected {
-            Color32::WHITE
+            tw::WHITE
         } else {
-            Color32::from_rgb(194, 202, 216)
+            tw::SLATE_300
         }))
         .fill(if selected {
-            Color32::from_rgb(42, 105, 168)
+            tw::BLUE_600
         } else {
-            Color32::from_rgb(25, 29, 37)
+            tw::SLATE_800
         }),
     );
     if response.clicked() {
@@ -1150,68 +1726,91 @@ fn nav_button(ui: &mut Ui, view: &mut View, target: View, label: &str) {
 
 fn stat_block(ui: &mut Ui, label: &str, value: String) {
     Frame::new()
-        .fill(Color32::from_rgb(31, 39, 53))
-        .stroke(Stroke::new(1.0, Color32::from_rgb(48, 60, 79)))
+        .fill(tw::SLATE_800)
+        .stroke(Stroke::new(1.0, tw::SLATE_700))
         .corner_radius(CornerRadius::same(8))
         .inner_margin(Margin::same(14))
         .show(ui, |ui| {
             ui.set_min_width(172.0);
-            ui.label(
-                RichText::new(label)
-                    .color(Color32::from_rgb(156, 166, 184))
-                    .size(12.0),
-            );
+            ui.label(RichText::new(label).color(tw::SLATE_400).size(12.0));
             ui.label(
                 RichText::new(value)
-                    .color(Color32::WHITE)
+                    .color(tw::WHITE)
                     .font(FontId::proportional(30.0)),
             );
         });
 }
 
 fn page_header(ui: &mut Ui, title: &str, subtitle: &str) {
-    ui.add_space(18.0);
-    ui.heading(
-        RichText::new(title)
-            .size(28.0)
-            .color(Color32::from_rgb(22, 28, 38)),
-    );
-    ui.label(RichText::new(subtitle).color(Color32::from_rgb(87, 96, 111)));
+    ui.add_space(8.0);
+    ui.heading(RichText::new(title).size(34.0).color(tw::SLATE_900));
+    ui.label(RichText::new(subtitle).size(18.0).color(tw::SLATE_600));
     ui.add_space(18.0);
 }
 
 fn panel(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui)) {
     Frame::new()
-        .fill(Color32::WHITE)
-        .stroke(Stroke::new(1.0, Color32::from_rgb(219, 225, 232)))
+        .fill(tw::WHITE)
+        .stroke(Stroke::new(1.0, tw::SLATE_200))
         .corner_radius(CornerRadius::same(8))
         .inner_margin(Margin::same(16))
         .show(ui, add_contents);
 }
 
 fn text_field(ui: &mut Ui, label: &str, value: &mut String) {
-    ui.label(label);
-    ui.add_sized(
-        [ui.available_width().max(220.0), 32.0],
-        egui::TextEdit::singleline(value),
-    );
+    ui.label(RichText::new(label).strong().color(tw::SLATE_700));
+    input_frame(ui, |ui| {
+        ui.add_sized(
+            [ui.available_width().max(220.0), 28.0],
+            egui::TextEdit::singleline(value)
+                .frame(Frame::NONE)
+                .desired_width(f32::INFINITY),
+        );
+    });
 }
 
 fn password_field(ui: &mut Ui, label: &str, value: &mut String) {
-    ui.label(label);
-    ui.add_sized(
-        [ui.available_width().max(220.0), 32.0],
-        egui::TextEdit::singleline(value).password(true),
-    );
+    ui.label(RichText::new(label).strong().color(tw::SLATE_700));
+    input_frame(ui, |ui| {
+        ui.add_sized(
+            [ui.available_width().max(220.0), 28.0],
+            egui::TextEdit::singleline(value)
+                .password(true)
+                .frame(Frame::NONE)
+                .desired_width(f32::INFINITY),
+        );
+    });
+}
+
+fn input_frame(ui: &mut Ui, add_contents: impl FnOnce(&mut Ui)) {
+    Frame::new()
+        .fill(tw::SLATE_50)
+        .stroke(Stroke::new(1.0, tw::SLATE_300))
+        .corner_radius(CornerRadius::same(6))
+        .inner_margin(Margin::symmetric(10, 5))
+        .show(ui, add_contents);
 }
 
 fn metric(ui: &mut Ui, label: &str, value: String) {
     ui.horizontal(|ui| {
-        ui.label(RichText::new(label).color(Color32::from_rgb(93, 103, 119)));
+        ui.label(RichText::new(label).color(tw::SLATE_600));
         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
             ui.label(RichText::new(value).strong());
         });
     });
+}
+
+fn compact_metric(ui: &mut Ui, label: &str, value: String) {
+    Frame::new()
+        .fill(tw::SLATE_50)
+        .stroke(Stroke::new(1.0, tw::SLATE_200))
+        .corner_radius(CornerRadius::same(6))
+        .inner_margin(Margin::symmetric(10, 6))
+        .show(ui, |ui| {
+            ui.set_min_width(118.0);
+            ui.label(RichText::new(label).size(12.0).color(tw::SLATE_600));
+            ui.label(RichText::new(value).strong().color(tw::SLATE_900));
+        });
 }
 
 fn fit_rect(bounds: Rect, image_size: Vec2) -> Rect {
@@ -1248,6 +1847,10 @@ fn timeline_message(event: &EngineEvent) -> (SessionEventKind, String) {
             SessionEventKind::Error,
             format!("RDP error {:?}: {}", class, message),
         ),
+        EngineEvent::Diagnostic { message, .. } => (
+            SessionEventKind::Diagnostic,
+            format!("RDP diagnostic: {message}"),
+        ),
         EngineEvent::Disconnected { reason, .. } => (
             SessionEventKind::ConnectionStage,
             format!("Disconnected: {reason}"),
@@ -1263,4 +1866,56 @@ fn format_ai_explanation(explanation: &AiExplanation) -> String {
         explanation.next_safe_step,
         explanation.confidence * 100.0
     )
+}
+
+fn save_incident_files(
+    session_id: Uuid,
+    markdown: &str,
+    evidence_json: &str,
+) -> anyhow::Result<std::path::PathBuf> {
+    let dir = app_data_file("incidents")?.join(session_id.to_string());
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(dir.join("incident.md"), markdown)?;
+    std::fs::write(dir.join("evidence.json"), evidence_json)?;
+    Ok(dir)
+}
+
+fn is_standard_rdp_security_error(message: &str) -> bool {
+    let lower = message.to_lowercase();
+    lower.contains("standard rdp security") || lower.contains("server only supports standard rdp")
+}
+
+fn key_event_to_hotkey(key: egui::Key, modifiers: egui::Modifiers) -> Option<Vec<String>> {
+    let mut keys = Vec::new();
+    if modifiers.ctrl {
+        keys.push("Ctrl".to_owned());
+    }
+    if modifiers.alt {
+        keys.push("Alt".to_owned());
+    }
+    if modifiers.shift {
+        keys.push("Shift".to_owned());
+    }
+    if modifiers.mac_cmd || modifiers.command {
+        keys.push("Win".to_owned());
+    }
+
+    let key_name = match key {
+        egui::Key::Enter => "Enter",
+        egui::Key::Tab => "Tab",
+        egui::Key::Escape => "Esc",
+        egui::Key::Backspace => return None,
+        egui::Key::Delete => "Delete",
+        egui::Key::Home => "Home",
+        egui::Key::End => "End",
+        egui::Key::PageUp => "PageUp",
+        egui::Key::PageDown => "PageDown",
+        egui::Key::ArrowLeft => "Left",
+        egui::Key::ArrowRight => "Right",
+        egui::Key::ArrowUp => "Up",
+        egui::Key::ArrowDown => "Down",
+        _ => return None,
+    };
+    keys.push(key_name.to_owned());
+    Some(keys)
 }

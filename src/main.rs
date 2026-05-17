@@ -4,6 +4,7 @@ mod certificate;
 mod computer_use;
 mod diagnostics;
 mod ironrdp_client;
+mod legacy_rdp;
 mod memory;
 mod models;
 mod policy;

@@ -184,11 +184,13 @@ fn finding_to_sentence(finding: &DiagnosticFinding) -> String {
 }
 
 #[derive(Default)]
+#[allow(dead_code)]
 pub struct OptionalCloudAiProvider {
     api_key: Option<String>,
     local: LocalAiProvider,
 }
 
+#[allow(dead_code)]
 impl OptionalCloudAiProvider {
     pub fn new(api_key: Option<String>) -> Self {
         Self {

@@ -9,6 +9,7 @@ Aivana is a native Rust desktop RDP and operations cockpit. The runtime is local
 - GUI: `eframe`/`egui`
 - Language: Rust 2024 edition
 - Storage: JSON profile file in the user data directory, with profile passwords omitted
+- Secrets: Windows DPAPI-protected credential records on Windows, behind `CredentialStore`
 - Remote backend: `RemoteDesktopEngine` trait backed by IronRDP
 - KI: local deterministic provider by default; optional provider boundary exists for future configured cloud calls
 
@@ -49,7 +50,8 @@ The UI only consumes the trait. IronRDP-specific details stay in `ironrdp_client
 
 - Profile JSON stores host, port, username, domain, tags, workspace, and `credential_id`.
 - Password fields are marked `skip_serializing`.
-- `CredentialStore` is a backend boundary; the current local implementation keeps secrets outside profile persistence.
+- `CredentialStore` persists protected credential records and keeps secrets outside profile persistence.
+- `CertificateTrustStore` persists host/port/fingerprint decisions and can probe the RDP TLS server key before trusting.
 - Timeline, diagnostics, KI prompts, and reports pass through redaction helpers before being stored or exported.
 - Computer Use actions are classified as read-only, low-risk, elevated-risk, or destructive before execution.
 
@@ -59,8 +61,10 @@ The UI only consumes the trait. IronRDP-specific details stay in `ironrdp_client
 - `LocalAiProvider` explains failures and summarizes sessions without cloud calls.
 - `ComputerUseAgent` observes native RDP `FrameUpdate` data, plans a next action, applies `PolicyEngine`, and can verify frame changes.
 - The app exposes proactive KI actions: failure explanation, session comparison, safe next action, evidence mode, ticket draft, and runbook recommendation.
-- `RunbookEngine` provides first local read-only diagnostic/evidence workflows.
-- `MemoryStore` keeps redacted host/workspace notes for better future recommendations.
+- `RunbookEngine` provides first local read-only diagnostic/evidence workflows with start, next-step, pause, resume, and abort.
+- `Approval Center` executes allowed actions through the native RDP input path and traces decisions.
+- `MemoryStore` keeps redacted persistent host/workspace notes for better future recommendations.
+- Incident export writes Markdown and JSON evidence bundles to the local app data folder.
 
 ## Verification
 

@@ -33,15 +33,18 @@ impl PolicyEngine {
         }
     }
 
+    #[allow(dead_code)]
     pub fn requires_approval(&self, action: &InputAction) -> bool {
         self.decision_for(action) == PolicyDecision::RequireApproval
     }
 
+    #[allow(dead_code)]
     pub fn deny_reason(&self, action: &InputAction) -> Option<String> {
         (self.decision_for(action) == PolicyDecision::Deny)
             .then(|| "Action is blocked by Aivana safety policy.".to_owned())
     }
 
+    #[allow(dead_code)]
     pub fn explain_decision(&self, action: &InputAction) -> String {
         match self.decision_for(action) {
             PolicyDecision::Allow => "Allowed: read-only or low-risk action.".to_owned(),

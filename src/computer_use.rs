@@ -114,6 +114,7 @@ impl<P: AiProvider> ComputerUseAgent<P> {
             action_id: action.id,
             session_id: action.session_id,
             description: action.description.clone(),
+            action: action.action.clone(),
             reason,
             expected_result: "Aivana verifies the next framebuffer after execution.".to_owned(),
             risk: action.risk,

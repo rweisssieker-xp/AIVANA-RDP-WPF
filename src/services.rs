@@ -38,7 +38,15 @@ impl ProfileStore {
         }
 
         let json = fs::read_to_string(&self.path).context("failed to read profiles file")?;
-        let profiles = serde_json::from_str(&json).context("failed to parse profiles file")?;
+        let mut profiles: Vec<ConnectionProfile> =
+            serde_json::from_str(&json).context("failed to parse profiles file")?;
+        let had_serialized_passwords = profiles.iter().any(|profile| !profile.password.is_empty());
+        for profile in &mut profiles {
+            profile.password.clear();
+        }
+        if had_serialized_passwords {
+            let _ = self.save(&profiles);
+        }
         Ok(profiles)
     }
 
@@ -142,10 +150,18 @@ impl RemoteDesktopEngine for NativeRdpEngine {
                     Ok(event) => drained.push(event),
                     Err(TryRecvError::Empty) => break,
                     Err(TryRecvError::Disconnected) => {
-                        drained.push(EngineEvent::Disconnected {
-                            session_id: session.id,
-                            reason: "RDP runtime stopped".to_owned(),
+                        let already_has_terminal_event = drained.iter().any(|event| {
+                            matches!(
+                                event,
+                                EngineEvent::Error { .. } | EngineEvent::Disconnected { .. }
+                            )
                         });
+                        if !already_has_terminal_event {
+                            drained.push(EngineEvent::Disconnected {
+                                session_id: session.id,
+                                reason: "RDP runtime stopped".to_owned(),
+                            });
+                        }
                         break;
                     }
                 }
@@ -214,6 +230,7 @@ impl NativeRdpEngine {
                 session.status = SessionStatus::Failed;
                 session.last_error = Some(message);
             }
+            EngineEvent::Diagnostic { .. } => {}
             EngineEvent::Disconnected { reason, .. } => {
                 session.status = SessionStatus::Disconnected;
                 session.last_error = Some(reason);
