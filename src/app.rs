@@ -59,7 +59,7 @@ enum View {
     Settings,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum RemoteViewMode {
     Fit,
     ActualSize,
@@ -1024,6 +1024,7 @@ impl AivanaApp {
                         );
                         if response.clicked() {
                             self.selected_session = Some(session.id);
+                            self.remote_view_mode = RemoteViewMode::Fit;
                         }
                     }
                 });
@@ -1065,6 +1066,7 @@ impl AivanaApp {
                         .clicked()
                     {
                         self.selected_session = Some(session.id);
+                        self.remote_view_mode = RemoteViewMode::Fit;
                     }
                 }
             });
@@ -1173,6 +1175,7 @@ impl AivanaApp {
                 ui.add_space(8.0);
                 if let Some(session) = self.selected_session() {
                     metric(ui, "Status", session.status.label().to_owned());
+                    metric(ui, "Canvas", self.canvas_status(session.id));
                     metric(ui, "Quality", format!("{}%", session.metrics.quality_score));
                     metric(
                         ui,
@@ -1570,6 +1573,18 @@ impl AivanaApp {
         }
     }
 
+    fn canvas_status(&self, session_id: Uuid) -> String {
+        match (
+            self.latest_frames.get(&session_id),
+            self.textures.get(&session_id),
+        ) {
+            (Some(frame), Some(_)) => format!("Frame {}x{}", frame.width, frame.height),
+            (Some(frame), None) => format!("Frame {}x{}, Texture fehlt", frame.width, frame.height),
+            (None, Some(_)) => "Texture vorhanden, Frame fehlt".to_owned(),
+            (None, None) => "Noch kein Frame".to_owned(),
+        }
+    }
+
     fn remote_canvas(&mut self, ui: &mut Ui, session_id: Uuid) {
         let width = ui.available_width().max(280.0);
         let height = ui.available_height().clamp(260.0, 1400.0);
@@ -1603,6 +1618,16 @@ impl AivanaApp {
                 image_rect,
                 Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
                 Color32::WHITE,
+            );
+            painter.text(
+                rect.left_top() + Vec2::new(10.0, 8.0),
+                egui::Align2::LEFT_TOP,
+                format!(
+                    "{}x{}  {:?}",
+                    frame.width, frame.height, self.remote_view_mode
+                ),
+                FontId::proportional(11.0),
+                tw::SLATE_300,
             );
 
             if response.hovered() {
