@@ -1,5 +1,6 @@
 mod ai;
 mod app;
+mod autopilot;
 mod certificate;
 mod computer_use;
 mod diagnostics;

@@ -9,6 +9,10 @@ use eframe::egui::{
 use uuid::Uuid;
 
 use crate::ai::{AiProvider, LocalAiProvider};
+use crate::autopilot::{
+    AutopilotController, AutopilotPlan, AutopilotProvider, AutopilotProviderKind, AutopilotRequest,
+    AutopilotStatus, LocalAutopilotProvider, OpenAiComputerUseProvider, classify_plan_action,
+};
 use crate::certificate::CertificateTrustStore;
 use crate::computer_use::ComputerUseAgent;
 use crate::diagnostics::{LocalPreflightService, PreflightService};
@@ -96,6 +100,7 @@ pub struct AivanaApp {
     session_inspector_open: bool,
     remote_view_mode: RemoteViewMode,
     remote_fullscreen: bool,
+    autopilot: AutopilotController,
 }
 
 impl AivanaApp {
@@ -172,6 +177,7 @@ impl AivanaApp {
             session_inspector_open: false,
             remote_view_mode: RemoteViewMode::Fit,
             remote_fullscreen: false,
+            autopilot: AutopilotController::default(),
         }
     }
 
@@ -544,6 +550,297 @@ impl AivanaApp {
         }
     }
 
+    fn process_autopilot(&mut self) {
+        let Some(session_id) = self.selected_session else {
+            return;
+        };
+        if !self.autopilot.can_step() {
+            return;
+        }
+        let Some(frame) = self.latest_frames.get(&session_id).cloned() else {
+            self.computer_use_status = "Autopilot wartet auf einen Framebuffer.".to_owned();
+            return;
+        };
+        if self
+            .sessions
+            .iter()
+            .find(|session| session.id == session_id)
+            .is_some_and(|session| {
+                matches!(
+                    session.status,
+                    SessionStatus::Disconnected | SessionStatus::Failed
+                )
+            })
+        {
+            self.autopilot.status = AutopilotStatus::Failed;
+            self.computer_use_status =
+                "Autopilot gestoppt: RDP-Session ist nicht verbunden.".to_owned();
+            return;
+        }
+
+        let agent = ComputerUseAgent::default();
+        let observation = agent.observe(&frame);
+        let plan = if let Some(mut plan) = self.autopilot.take_pending_safety_plan() {
+            plan.safety_checks.clear();
+            plan
+        } else {
+            match self.plan_autopilot_step(&frame, &observation) {
+                Ok(plan) => plan,
+                Err(err) => {
+                    self.autopilot.status = AutopilotStatus::Failed;
+                    self.computer_use_status = format!("Autopilot planning failed: {err}");
+                    self.record_autopilot_error(session_id, &observation.summary, err.to_string());
+                    return;
+                }
+            }
+        };
+
+        self.autopilot.previous_response_id = plan
+            .response_id
+            .clone()
+            .or_else(|| self.autopilot.previous_response_id.clone());
+        self.autopilot.last_call_id = plan
+            .call_id
+            .clone()
+            .or_else(|| self.autopilot.last_call_id.clone());
+
+        if !plan.safety_checks.is_empty() {
+            self.autopilot.pending_safety_checks = plan.safety_checks.clone();
+            self.autopilot.pending_safety_plan = Some(plan.clone());
+            self.autopilot.status = AutopilotStatus::WaitingForSafetyAck;
+            self.computer_use_status =
+                "OpenAI Computer Use safety check wartet auf Operator-Bestaetigung.".to_owned();
+            self.record_autopilot_step(
+                session_id,
+                &frame,
+                &observation.summary,
+                &plan,
+                RiskLevel::ReadOnly,
+                PolicyDecision::RequireApproval,
+                None,
+                None,
+            );
+            return;
+        }
+
+        if plan.completed {
+            self.autopilot.status = AutopilotStatus::Completed;
+            self.computer_use_status = format!("Autopilot completed: {}", plan.summary);
+            self.timeline.append_event(
+                session_id,
+                None,
+                SessionEventKind::AiAction,
+                self.computer_use_status.clone(),
+            );
+            return;
+        }
+
+        let Some(action) = plan.action.clone() else {
+            self.autopilot.status = AutopilotStatus::Completed;
+            self.computer_use_status = "Autopilot completed without further action.".to_owned();
+            return;
+        };
+        let (risk, decision) = classify_plan_action(&action, &self.autopilot.settings);
+        if decision == PolicyDecision::Deny {
+            self.autopilot.status = AutopilotStatus::Failed;
+            self.computer_use_status = format!("Autopilot denied action: {:?}", action);
+            self.record_autopilot_step(
+                session_id,
+                &frame,
+                &observation.summary,
+                &plan,
+                risk,
+                decision,
+                None,
+                Some("Policy denied action".to_owned()),
+            );
+            return;
+        }
+        if decision == PolicyDecision::RequireApproval {
+            let ai_action = AiAction {
+                id: Uuid::new_v4(),
+                session_id: Some(session_id),
+                description: format!("Autopilot: {}", plan.action_description),
+                action: action.clone(),
+                risk,
+                decision,
+            };
+            let approval = agent.request_approval(
+                &ai_action,
+                format!(
+                    "Autopilot goal '{}' wants to mutate remote UI.",
+                    self.autopilot.goal
+                ),
+            );
+            self.approvals.push(approval);
+            self.autopilot.status = AutopilotStatus::WaitingForApproval;
+            self.computer_use_status =
+                format!("Autopilot queued approval: {}", plan.action_description);
+            self.record_autopilot_step(
+                session_id,
+                &frame,
+                &observation.summary,
+                &plan,
+                risk,
+                decision,
+                None,
+                None,
+            );
+            return;
+        }
+
+        let verification = match self.execute_autopilot_action(session_id, action.clone(), &frame) {
+            Ok(verification) => verification,
+            Err(err) => {
+                self.autopilot.status = AutopilotStatus::Failed;
+                self.computer_use_status = format!("Autopilot action failed: {err}");
+                self.record_autopilot_step(
+                    session_id,
+                    &frame,
+                    &observation.summary,
+                    &plan,
+                    risk,
+                    decision,
+                    None,
+                    Some(err.to_string()),
+                );
+                return;
+            }
+        };
+        self.record_autopilot_step(
+            session_id,
+            &frame,
+            &observation.summary,
+            &plan,
+            risk,
+            decision,
+            verification,
+            None,
+        );
+        self.computer_use_status = format!("Autopilot step: {}", plan.action_description);
+    }
+
+    fn plan_autopilot_step(
+        &self,
+        frame: &FrameUpdate,
+        observation: &crate::models::ScreenObservation,
+    ) -> anyhow::Result<AutopilotPlan> {
+        let request = AutopilotRequest {
+            goal: &self.autopilot.goal,
+            frame,
+            observation,
+            settings: &self.autopilot.settings,
+            previous_response_id: self.autopilot.previous_response_id.as_deref(),
+            last_call_id: self.autopilot.last_call_id.as_deref(),
+            acknowledged_safety_checks: &self.autopilot.acknowledged_safety_checks,
+        };
+        match self.autopilot.settings.provider {
+            AutopilotProviderKind::Local => LocalAutopilotProvider.plan(&request),
+            AutopilotProviderKind::OpenAiComputerUse => {
+                OpenAiComputerUseProvider::from_env()?.plan(&request)
+            }
+        }
+    }
+
+    fn execute_autopilot_action(
+        &mut self,
+        session_id: Uuid,
+        action: InputAction,
+        frame_before: &FrameUpdate,
+    ) -> anyhow::Result<Option<crate::models::VerificationResult>> {
+        match action {
+            InputAction::Wait { millis } => {
+                std::thread::sleep(std::time::Duration::from_millis(millis.min(2500)));
+                Ok(None)
+            }
+            InputAction::Screenshot | InputAction::Verify { .. } => Ok(None),
+            other => {
+                self.engine.send_input(session_id, other)?;
+                let frame_after = self.latest_frames.get(&session_id).unwrap_or(frame_before);
+                if frame_after.frame_hash == frame_before.frame_hash {
+                    Ok(None)
+                } else {
+                    Ok(Some(ComputerUseAgent::default().verify_step(
+                        session_id,
+                        frame_before.frame_hash,
+                        frame_after,
+                    )))
+                }
+            }
+        }
+    }
+
+    fn record_autopilot_step(
+        &mut self,
+        session_id: Uuid,
+        frame: &FrameUpdate,
+        observation: &str,
+        plan: &AutopilotPlan,
+        risk: RiskLevel,
+        decision: PolicyDecision,
+        verification: Option<crate::models::VerificationResult>,
+        error: Option<String>,
+    ) {
+        self.timeline
+            .append_snapshot("Autopilot framebuffer observation".to_owned(), frame);
+        self.timeline.append_event(
+            session_id,
+            None,
+            SessionEventKind::AiAction,
+            format!(
+                "Autopilot step {} provider={} risk={:?} decision={:?} action={} summary={}{}",
+                self.autopilot.steps.len() + 1,
+                self.autopilot.settings.provider.label(),
+                risk,
+                decision,
+                plan.action_description,
+                plan.summary,
+                error
+                    .as_ref()
+                    .map(|err| format!(" error={err}"))
+                    .unwrap_or_default()
+            ),
+        );
+        self.autopilot.record_step(crate::autopilot::AutopilotStep {
+            index: self.autopilot.steps.len() + 1,
+            captured_at: Utc::now(),
+            observation: observation.to_owned(),
+            model_summary: plan.summary.clone(),
+            action_description: plan.action_description.clone(),
+            action: plan.action.clone(),
+            risk,
+            decision,
+            verification,
+            safety_checks: plan.safety_checks.clone(),
+            error,
+        });
+    }
+
+    fn record_autopilot_error(&mut self, session_id: Uuid, observation: &str, error: String) {
+        let Some(frame) = self.latest_frames.get(&session_id).cloned() else {
+            return;
+        };
+        let plan = AutopilotPlan {
+            response_id: None,
+            call_id: None,
+            summary: "Autopilot planning error".to_owned(),
+            action: None,
+            action_description: "planning failed".to_owned(),
+            safety_checks: Vec::new(),
+            completed: false,
+        };
+        self.record_autopilot_step(
+            session_id,
+            &frame,
+            observation,
+            &plan,
+            RiskLevel::ReadOnly,
+            PolicyDecision::Deny,
+            None,
+            Some(error),
+        );
+    }
+
     fn reconnect_selected_session(&mut self) {
         let Some(session_id) = self.selected_session else {
             self.status = "No session selected".to_owned();
@@ -605,6 +902,8 @@ impl eframe::App for AivanaApp {
                 received_frame = true;
             }
         }
+
+        self.process_autopilot();
 
         let root = ui.max_rect();
         ui.painter()
@@ -1200,6 +1499,10 @@ impl AivanaApp {
                         .size(12.0)
                         .color(tw::SLATE_600),
                 );
+                if let Some(session_id) = self.selected_session.map(|id| id) {
+                    ui.separator();
+                    self.ai_session_panel(ui, session_id);
+                }
             });
     }
 
@@ -1266,12 +1569,24 @@ impl AivanaApp {
                                 }
                                 self.computer_use_status =
                                     format!("Approved action executed: {}", approval.description);
+                                if self.autopilot.status == AutopilotStatus::WaitingForApproval {
+                                    self.autopilot.status = AutopilotStatus::Running;
+                                }
                             }
                             Err(err) => {
                                 self.computer_use_status =
                                     format!("Approved action could not execute: {err}");
+                                if self.autopilot.status == AutopilotStatus::WaitingForApproval {
+                                    self.autopilot.status = AutopilotStatus::Failed;
+                                }
                             }
                         }
+                    } else if self.autopilot.status == AutopilotStatus::WaitingForApproval {
+                        self.autopilot.status = if approval.status == ApprovalStatus::Aborted {
+                            AutopilotStatus::Aborted
+                        } else {
+                            AutopilotStatus::Failed
+                        };
                     }
                     self.timeline.append_event(
                         session_id,
@@ -1347,6 +1662,14 @@ impl AivanaApp {
             ui.label("Persistent profile store: JSON in user data directory");
             ui.label("RDP backend: native Rust IronRDP connector");
             ui.label("Computer Use: native framebuffer observation and RDP input policy gates");
+            ui.label(format!(
+                "Autopilot provider: {}",
+                self.autopilot.settings.provider.label()
+            ));
+            ui.label(format!(
+                "OpenAI Computer Use: opt-in via OPENAI_API_KEY, model {}",
+                self.autopilot.settings.openai_model
+            ));
             ui.label("Security: profile JSON omits passwords; credential backend boundary exists");
             ui.label(format!(
                 "Workspaces prepared: {}",
@@ -1365,6 +1688,118 @@ impl AivanaApp {
         }
         ui.label(format!("Lokale KI: {}", self.ai_diagnosis));
         ui.label(format!("Computer Use: {}", self.computer_use_status));
+        ui.separator();
+        ui.label(
+            RichText::new("Full Autopilot")
+                .strong()
+                .color(tw::SLATE_800),
+        );
+        ui.horizontal(|ui| {
+            ui.label("Provider");
+            egui::ComboBox::from_id_salt("autopilot-provider")
+                .selected_text(self.autopilot.settings.provider.label())
+                .show_ui(ui, |ui| {
+                    ui.selectable_value(
+                        &mut self.autopilot.settings.provider,
+                        AutopilotProviderKind::Local,
+                        "Local",
+                    );
+                    ui.selectable_value(
+                        &mut self.autopilot.settings.provider,
+                        AutopilotProviderKind::OpenAiComputerUse,
+                        "OpenAI CUA",
+                    );
+                });
+            ui.checkbox(
+                &mut self.autopilot.settings.require_approval_for_every_mutation,
+                "Approve mutations",
+            );
+            ui.checkbox(
+                &mut self.autopilot.settings.agentic_runbook_mode,
+                "Agentic runbook mode",
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.label("Goal");
+            ui.add_sized(
+                [ui.available_width().max(260.0), 28.0],
+                egui::TextEdit::singleline(&mut self.autopilot.goal),
+            );
+        });
+        ui.horizontal(|ui| {
+            ui.label(format!(
+                "Status: {} | Steps: {}/{}",
+                self.autopilot.status.label(),
+                self.autopilot.steps.len(),
+                self.autopilot.settings.max_steps
+            ));
+            if ui.button("Start Autopilot").clicked() {
+                let goal = self.autopilot.goal.clone();
+                self.autopilot.start(goal);
+                self.computer_use_status = "Autopilot started.".to_owned();
+                self.timeline.append_event(
+                    session_id,
+                    None,
+                    SessionEventKind::AiAction,
+                    format!("Autopilot started: {}", self.autopilot.goal),
+                );
+            }
+            if ui.button("Pause").clicked() {
+                self.autopilot.pause();
+                self.computer_use_status = "Autopilot paused.".to_owned();
+            }
+            if ui.button("Resume").clicked() {
+                self.autopilot.resume();
+                self.computer_use_status = "Autopilot resumed.".to_owned();
+            }
+            if ui.button("Abort").clicked() {
+                self.autopilot.abort();
+                self.timeline.append_event(
+                    session_id,
+                    None,
+                    SessionEventKind::AiAction,
+                    "Autopilot aborted by operator.".to_owned(),
+                );
+                self.computer_use_status = "Autopilot aborted.".to_owned();
+            }
+        });
+        if self.autopilot.status == AutopilotStatus::WaitingForSafetyAck {
+            ui.label(
+                RichText::new("OpenAI safety checks require confirmation.").color(tw::RED_600),
+            );
+            for check in &self.autopilot.pending_safety_checks {
+                ui.label(format!("{}: {}", check.code, check.message));
+            }
+            if ui.button("Acknowledge safety checks").clicked() {
+                self.autopilot.acknowledge_safety_checks();
+                self.timeline.append_event(
+                    session_id,
+                    None,
+                    SessionEventKind::Approval,
+                    "Autopilot OpenAI safety checks acknowledged.".to_owned(),
+                );
+            }
+        }
+        ScrollArea::vertical().max_height(150.0).show(ui, |ui| {
+            for step in self.autopilot.steps.iter().rev().take(5) {
+                ui.label(format!(
+                    "#{} {:?}/{:?}: {}",
+                    step.index, step.risk, step.decision, step.action_description
+                ));
+                ui.label(
+                    RichText::new(&step.model_summary)
+                        .size(12.0)
+                        .color(tw::SLATE_600),
+                );
+                if let Some(verification) = &step.verification {
+                    ui.label(format!("Verify: {}", verification.evidence));
+                }
+                if let Some(error) = &step.error {
+                    ui.label(RichText::new(format!("Error: {error}")).color(tw::RED_600));
+                }
+            }
+        });
+        ui.separator();
 
         ui.horizontal(|ui| {
             if ui.button("Why did this fail?").clicked() {
