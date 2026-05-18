@@ -201,6 +201,7 @@ dependencies = [
  "ironrdp-graphics",
  "ironrdp-pdu",
  "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "sspi",

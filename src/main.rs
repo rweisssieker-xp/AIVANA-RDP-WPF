@@ -17,6 +17,10 @@ mod workspace;
 
 use app::AivanaApp;
 
+fn install_rustls_crypto_provider() {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+}
+
 fn build_cli_help() -> &'static str {
     r#"Aivana Rust RDP Client
 
@@ -81,6 +85,8 @@ fn cli_arg_value(args: &[String], name: &str) -> Option<String> {
 }
 
 fn main() -> eframe::Result<()> {
+    install_rustls_crypto_provider();
+
     let args = std::env::args().collect::<Vec<_>>();
     if args.iter().any(|arg| arg == "--help" || arg == "--ai-help") {
         println!("{}", build_cli_help());

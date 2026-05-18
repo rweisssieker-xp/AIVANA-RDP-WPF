@@ -257,6 +257,23 @@ fn redact_secret_token(token: &str) -> String {
 }
 
 pub fn app_data_file(file: &str) -> Result<PathBuf> {
+    #[cfg(test)]
+    let base_dir = {
+        static TEST_APP_DATA_DIR: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+        TEST_APP_DATA_DIR
+            .get_or_init(|| {
+                let started = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|duration| duration.as_nanos())
+                    .unwrap_or_default();
+                std::env::temp_dir()
+                    .join("Aivana")
+                    .join(format!("RustRdpClientTests-{}-{started}", std::process::id()))
+            })
+            .clone()
+    };
+
+    #[cfg(not(test))]
     let base_dir = dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
         .join("Aivana")

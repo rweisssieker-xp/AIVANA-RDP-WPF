@@ -7001,7 +7001,7 @@ fn save_operator_handoff_pack_to_dir_with_args(
     let gui_operator_actions = build_gui_operator_actions(audit);
     let llm_review_prompt = build_operator_llm_review_prompt(readiness, audit, &runbook);
     let llm_live_gate_plan = build_live_gate_llm_plan(audit, &live_gate_doctor, &runbook);
-    let llm_action_contract =
+    let mut llm_action_contract =
         build_llm_action_contract(audit, &live_gate_doctor, &rdp_proof_check, args);
     let rdp_env_fill_guide = build_rdp_env_fill_guide();
     let summary = format!(
@@ -7183,7 +7183,7 @@ fn save_operator_handoff_pack_to_dir_with_args(
     risk_summary.handoff_missing_file_count = 0;
     risk_summary.handoff_schema_error_count = 0;
     risk_summary.handoff_content_mismatch_count = 0;
-    risk_summary.ok = live_gate_doctor.achieved && risk_summary.goal_evidence_ok;
+    risk_summary.ok = audit.achieved && risk_summary.goal_evidence_ok && risk_summary.rdp_proof_ok;
     risk_summary.severity = if risk_summary.ok {
         "ready".to_owned()
     } else {
@@ -7203,6 +7203,7 @@ fn save_operator_handoff_pack_to_dir_with_args(
     verification_snapshot["handoff"]["invalid_file_schemas"] = serde_json::json!(0);
     verification_snapshot["handoff"]["content_mismatches"] = serde_json::json!(0);
     verification_snapshot["handoff"]["errors"] = serde_json::json!(0);
+    verification_snapshot["ok"] = serde_json::json!(risk_summary.ok);
     verification_snapshot["risk"]["ok"] = serde_json::json!(risk_summary.ok);
     verification_snapshot["risk"]["severity"] = serde_json::json!(risk_summary.severity.clone());
     verification_snapshot["risk"]["blocking_reason"] =
@@ -7231,6 +7232,11 @@ fn save_operator_handoff_pack_to_dir_with_args(
     std::fs::write(
         dir.join("verification-snapshot.json"),
         redacted_json_string(&verification_snapshot)?,
+    )?;
+    llm_action_contract["ok"] = serde_json::json!(risk_summary.ok);
+    std::fs::write(
+        dir.join("llm-action-contract.json"),
+        redacted_json_string(&llm_action_contract)?,
     )?;
     std::fs::write(
         dir.join("operator-handoff-risk-summary.json"),
