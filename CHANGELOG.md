@@ -21,5 +21,174 @@
 - Added persistent certificate trust, timeline/blackbox, workspace, and host memory stores.
 - Added RDP TLS fingerprint probing for certificate trust decisions.
 - Added approved-action execution, runbook next-step execution, pause/resume/abort, incident files on disk, and keyboard hotkey forwarding.
+- Added Autopilot Mission Control with persisted goal/provider/model/step/delay preferences, goal presets, local next-step preview, editable OpenAI controls, batched OpenAI Computer Use action parsing, batch-preserving approvals, redacted approval action previews, status counters, and batch-aware per-step audit output.
+- Added `--save-ki-preferences` to persist the same Autopilot preferences used by the GUI from headless workflows and print a redacted save report.
+- Updated `--ki-readiness-report` and `--ki-evidence-bundle` to honor `--rdp-env-file` so readiness, preflight, smoke, and LLM handoff use the same local RDP verification file.
+- Updated `--operator-handoff-pack` and the recommended live-gate sequence to honor `--rdp-env-file .\rdp-live.env` for embedded readiness parity.
+- Updated `--completion-audit`, goal evidence commands, and dependent handoff artifacts to reuse `--rdp-env-file` for their embedded readiness view.
+- Added redacted LLM handoff export for prompt-ready incident analysis from diagnostics, timeline, snapshots, and Autopilot trace.
+- Added Workspace KI Operations cockpit with readiness checks, KI Action Brief, Autopilot priming, evidence goals, and one-click LLM handoff for the active session.
+- Added `--rdp-smoke-test` CLI verification with persisted structured JSON evidence for real RDP endpoint connection, framebuffer, pointer-move input probe, and redacted failure diagnostics through the Rust IronRDP path.
+- Added configurable RDP smoke-test timeouts via `AIVANA_RDP_TEST_TIMEOUT_SECS` or `--rdp-smoke-timeout`, with effective timeout recorded in success and failure evidence.
+- Added `--rdp-env-template` to print a redacted live RDP verification `.env` starter from the same template used by GUI and handoff packs.
+- Added `--save-rdp-env-template <path>` to create the redacted live RDP `.env` starter without overwriting an existing file.
+- Updated the recommended live-gate, GUI copy, runbook, next-gate, command-index, and evidence-matrix commands to use `--rdp-env-fill-guide` and `--rdp-env-file .\rdp-live.env` after saving the starter file.
+- Added `--rdp-env-file-check` to validate local RDP `.env` files, reject missing or placeholder values without DNS/TCP/RDP connection attempts, and persist JSON evidence under `rdp-env-file-checks`.
+- Added `--live-gate-doctor` to persist a redacted env-file/preflight/smoke/handoff/completion ladder with the exact next command for operators, CI, and LLM reviewers.
+- Added `rdp-env-file-check.json` and `live-gate-doctor.json` to the operator handoff pack with schema validation in `--operator-handoff-check`.
+- Added `--llm-live-gate-plan` and `llm-live-gate-plan.md` handoff output so LLM/CI reviewers get a redacted instruction plan from the doctor, audit, and runbook.
+- Added `--llm-action-contract`, GUI copy/export actions, and `llm-action-contract.json` in handoff packs so LLM/CI agents get strict next-command, allowed-command, evidence, and proxy-rejection rules as JSON.
+- `--operator-handoff-check` now rejects stale `llm-action-contract.json` content when it diverges from the live-gate doctor, allowed next commands, or RDP proof failed-check actions.
+- `llm-action-contract.json` now exposes machine-readable direct live evidence requirements, and `--operator-handoff-check` rejects stale contracts that omit them.
+- `--operator-handoff-check` now requires the command-index step for `--llm-action-contract` to advertise proxy-evidence rejection rules.
+- `--operator-handoff-check` now requires `llm-action-contract.json` to retain critical evidence-file references, explicit success signals, proxy-evidence rejection, and must-return/must-not-return response rules.
+- GUI operator actions now describe the LLM action-contract success signals and proxy-evidence rejection rules beside the copy/export controls.
+- `--operator-handoff-check` now rejects stale GUI operator actions that omit LLM action-contract success signals or proxy-evidence rejection rules.
+- `--operator-handoff-check` now rejects stale command-index command catalog or sequence entries that omit LLM action-contract success signals.
+- Goal evidence now records the GUI LLM action-contract success-signal and proxy-rejection controls.
+- `--operator-handoff-check` now rejects stale goal-evidence matrices that omit GUI LLM action-contract success-signal coverage.
+- Goal evidence matrices now advertise and validate the GUI LLM action-contract `direct_live_evidence_requirements` coverage.
+- GUI operator actions now advertise and validate the LLM action-contract `direct_live_evidence_requirements` coverage beside success-signal and proxy-rejection rules.
+- `operator-handoff-risk-summary.json` now mirrors LLM action-contract direct live evidence requirements and the handoff check rejects stale mismatches.
+- `--verification-snapshot` now includes LLM action-contract required evidence files, direct live evidence requirements, `early_triage_artifacts`, success signals, and proxy-evidence rejection rules for one-file LLM triage, and the handoff check rejects stale snapshots that omit them.
+- `llm-review-prompt.md` now explicitly tells LLM reviewers to cross-check `operator-handoff-risk-summary.json` for the LLM triage entrypoint, required evidence files, and `early_triage_artifacts`.
+- `--command-index` now advertises and validates the standalone `--llm-review-prompt` Early LLM Triage, risk-summary cross-check, `early_triage_artifacts`, and proxy-evidence rejection semantics.
+- `--llm-review-prompt` is now part of the next-live-gate commands, live-gate runbook, goal-evidence verification command list, and command-index recommended live-gate sequence before the LLM live-gate plan.
+- GUI operator actions and goal-evidence matrices now advertise and validate the Copy LLM Review Prompt control with `summary.md` Early LLM Triage and `operator-handoff-risk-summary.json` cross-check coverage.
+- GUI operator actions now describe Copy RDP Recovery Plan as carrying acceptance criteria, direct live evidence requirements, and proxy-evidence rejection.
+- `--command-index` now advertises and validates that `--rdp-proof-recovery-plan` carries direct live evidence requirements alongside acceptance criteria and proxy-evidence rejection.
+- `verification-snapshot.json` now includes an `llm_review_prompt` block with copy action, command, triage order, risk-summary cross-check fields, and proxy-evidence rejection rules.
+- Operator handoff file roles now validate that `llm-review-prompt.md` and `llm-live-gate-plan.md` advertise Early LLM Triage, risk-summary cross-checks, required evidence files, `early_triage_artifacts`, and proxy-evidence rejection.
+- Operator handoff file roles now validate that `rdp-proof-prompt.md` advertises Early LLM Triage, `llm-action-contract.json`, recovery-plan command, framebuffer/input evidence, and proxy-evidence rejection.
+- Operator handoff file roles now validate that `rdp-proof-recovery-plan.md` advertises exact commands, acceptance criteria, direct live evidence, and proxy-evidence rejection.
+- Operator handoff file roles now validate that `verification-snapshot.json` advertises its embedded LLM action-contract.
+- Operator handoff inspection order now keeps `llm-action-contract.json` immediately after `verification-snapshot.json`, and the handoff check rejects stale reordered manifests.
+- Operator handoff summaries now include an early LLM triage hint for `verification-snapshot.json` -> `llm-action-contract.json`, and the handoff check rejects summaries that omit it.
+- Operator handoff file roles now validate that `summary.md` advertises the Early LLM Triage path to `verification-snapshot.json` and `llm-action-contract.json`.
+- `--command-index` now advertises the handoff-pack Early LLM Triage path and `--operator-handoff-check` rejects stale command-index entries that omit it.
+- `llm-live-gate-plan.md` now tells LLM/CI agents to inspect `summary.md` Early LLM Triage before `verification-snapshot.json` and `llm-action-contract.json`, with handoff validation for those mentions.
+- `llm-review-prompt.md` now uses the same Early LLM Triage order and the handoff check rejects review prompts that omit `summary.md` or `llm-action-contract.json`.
+- `rdp-proof-prompt.md` now starts from the Early LLM Triage path and the handoff check rejects proof prompts that omit `summary.md` or `llm-action-contract.json`.
+- `llm-action-contract.json` now requires `summary.md` as an Early LLM Triage evidence file and requires assistants to return `early_triage_artifacts`.
+- `--command-index` now advertises and validates the LLM action-contract `summary.md` Early LLM Triage evidence and `early_triage_artifacts` response field.
+- GUI operator actions now tell operators that the LLM action-contract copy/export includes `summary.md` Early LLM Triage evidence and `early_triage_artifacts`, and handoff validation rejects stale checklists that omit them.
+- Goal evidence matrix/check artifacts now record and validate the GUI LLM action-contract Early LLM Triage and `early_triage_artifacts` coverage.
+- Added `--rdp-env-fill-guide`, GUI copy support, and `rdp-env-fill-guide.md` in handoff packs for safe local credential-fill guidance.
+- Added a Verification Center `Copy Live Gate Sequence` action and GUI checklist step so operators can copy the full ordered command sequence from env starter through handoff validation.
+- Added `--live-gate-sequence` so CI, operators, and LLM agents can print the same ordered live-gate command list without launching the GUI or parsing JSON.
+- Added `live-gate-sequence.txt` to the operator handoff pack with manifest role and inspection-order validation.
+- Updated LLM review and live-gate plan instructions to explicitly inspect `live-gate-sequence.txt`.
+- `--operator-handoff-check` now validates that `live-gate-sequence.txt` matches `next-live-gate.json.next_commands`.
+- `--live-gate-doctor` now routes placeholder or incomplete `rdp-live.env` values to `--rdp-env-fill-guide` instead of repeating the env-file check.
+- `--rdp-env-fill-guide` now shows the current blocker and the post-edit env-file check command instead of looping back to itself.
+- `--live-gate-doctor`, the fill guide, the LLM live-gate plan, and the Verification Center now expose an operator stage, acceptance criteria, a next-after-success command, and a direct `Copy Live Gate Next Command` action.
+- `--live-gate-doctor` now includes `rdp_proof_recovery_plan_command`, and `--operator-handoff-check` rejects stale doctor recovery-plan commands.
+- Added `--live-gate-operator-brief`, `live-gate-operator-brief.md` in handoff packs, and a Verification Center copy action for a concise Markdown stage/blocker/acceptance/next-command brief.
+- `--operator-handoff-check` now validates that `live-gate-operator-brief.md` mirrors the doctor recovery-plan command.
+- `--operator-handoff-check` now validates that `live-gate-operator-brief.md` matches `live-gate-doctor.json` for stage, blocker, acceptance criteria, and next commands.
+- `--operator-handoff-check` now requires `llm-live-gate-plan.md` to mention the RDP proof recovery-plan command explicitly.
+- Operator handoff file roles now describe and validate the recovery-plan command in `live-gate-doctor.json` and `live-gate-operator-brief.md`.
+- `--command-index` now states that the operator brief and LLM live-gate plan should expose the RDP proof recovery-plan command.
+- `--operator-handoff-check` now validates those command-index recovery-plan expectations instead of checking only command order.
+- `--operator-handoff-check` now rejects stale `rdp-proof-prompt.md` files that omit the RDP proof recovery-plan command.
+- Operator handoff file roles now describe and validate the RDP proof prompt recovery-plan command.
+- Operator handoff file roles now validate that `operator-handoff-risk-summary.json` advertises exact recovery commands.
+- Operator handoff file roles now validate that `operator-handoff-risk-summary.json` advertises its LLM triage entrypoint, required evidence files, and `early_triage_artifacts`.
+- Operator handoff file roles now validate that `rdp-proof-recovery-plan.md` advertises exact commands.
+- Operator handoff file roles now validate that `rdp-proof-check.json` advertises framebuffer and input-probe evidence.
+- Operator handoff file roles now validate that `rdp-env-file-check.json` advertises offline validation and `network_checked=false`.
+- Operator handoff file roles now validate that `goal-evidence-check.json` advertises hard completion and failure-exit semantics.
+- Operator handoff file roles now validate that `goal-evidence-matrix.json` advertises requirement-to-artifact and next-live-gate semantics.
+- Operator handoff file roles now validate that `verification-snapshot.json` advertises GUI and latest-evidence snapshot semantics.
+- Operator handoff file roles now validate that `command-index.json` advertises command-catalog and live-gate sequence semantics.
+- Operator handoff file roles now validate that `next-live-gate.json` advertises first-blocking-gate and next-command semantics.
+- Operator handoff file-role validation is now table-driven and also validates `next-live-gate.md` plus `live-gate-sequence.txt` human handoff semantics.
+- `--operator-handoff-check` now validates that LLM handoff Markdown still references the live-gate doctor, operator brief, command sequence, and proxy-evidence rejection rules.
+- `--operator-handoff-check` now validates that `command-index.json.recommended_live_gate_sequence` matches `next-live-gate.json.next_commands`.
+- Added `--operator-handoff-risk-summary` to persist a compact CI/LLM JSON risk snapshot across the live-gate doctor, handoff-pack check, and goal-evidence check with non-zero exit while blocked.
+- Added Verification Center controls for handoff risk evidence, JSON copy, command copy, and JSON export.
+- Added `--operator-handoff-risk-summary` to the next-live-gate and command-index live-gate sequences.
+- `--live-gate-doctor`, `--live-gate-operator-brief`, `--llm-live-gate-plan`, `--operator-handoff-pack`, and `--operator-handoff-risk-summary` now consume `--rdp-env-file .\rdp-live.env` consistently so LLM/CI handoff artifacts reflect the same ignored local RDP file.
+- `--completion-audit --rdp-env-file .\rdp-live.env` now embeds the current env-file validation summary in handoff evidence instead of relying on the latest persisted env-file check.
+- The KI Verification Center now auto-detects a local `rdp-live.env` in the working directory and uses it for Readiness, Goal Audit, Live-Gate Doctor, Handoff Risk, LLM Prompt/Plan, and Operator Handoff Pack exports.
+- The GUI operator action checklist now tells operators to verify the displayed RDP env source line before exporting or sharing handoff evidence.
+- Added `--verification-snapshot` and Verification Center copy/export controls for one compact redacted GUI/live-gate/handoff JSON artifact for operators, CI, and LLM review.
+- The GUI operator action checklist and handoff-pack validation now require verification snapshot copy/export coverage before the live-gate doctor handoff steps.
+- Added `--rdp-proof-check`, a Verification Center copy action, and `rdp-proof-check.json` in handoff packs for a proof-only JSON gate over env-file, matching preflight/smoke host-port evidence, smoke connection, framebuffer, and input probe evidence.
+- Added `--rdp-proof-check` to the recommended live-gate sequence, command index, runbook, risk summary, and verification snapshot evidence path.
+- The live-gate doctor now includes `rdp-proof-check` as its own ladder step so incomplete framebuffer/input proof blocks before operator handoff.
+- `rdp-proof-check` now rejects stale live evidence when persisted preflight or smoke reports do not match the current env-file host and port.
+- `rdp-proof-check` now also requires persisted preflight and smoke evidence to be newer than `rdp-live.env` when an env file is used.
+- `rdp-proof-check` now emits `failed_check_actions`, mapping each failed proof condition to an exact recovery command for GUI, CI, and LLM handoff.
+- `--verification-snapshot` now embeds the same RDP proof `failed_check_actions` so one compact artifact is enough for recovery planning.
+- `--operator-handoff-risk-summary` now mirrors RDP proof `failed_check_actions`, and the Verification Center can copy just the recovery commands.
+- `--verification-snapshot` now also mirrors the RDP proof recovery actions inside its `risk` block for one-file GUI/LLM triage.
+- `gui-operator-actions.md` now includes and validates the `Copy RDP Recovery Commands` GUI step so handoff packs do not miss the one-click recovery path.
+- `--operator-handoff-pack` now embeds `operator-handoff-risk-summary.json` with manifest role, inspection-order entry, schema validation, and consistency checks against the pack-local proof and goal gates.
+- `--operator-handoff-check` now rejects stale or divergent risk-summary RDP proof recovery actions when they no longer match `rdp-proof-check.json`.
+- `--operator-handoff-check` now also cross-checks pack-local risk-summary goal evidence fields against `goal-evidence-check.json`.
+- `--operator-handoff-check` now cross-checks `verification-snapshot.json.risk` against the pack-local `operator-handoff-risk-summary.json`.
+- `--operator-handoff-check` now cross-checks pack-local risk-summary doctor fields against `live-gate-doctor.json`.
+- Added `--rdp-proof-recovery-plan`, a Verification Center copy action, command-index step, and `rdp-proof-recovery-plan.md` in handoff packs to turn failed proof checks into exact recovery commands.
+- `--rdp-proof-prompt` now includes the RDP proof recovery-plan export command so copied LLM/operator prompts include both diagnosis and recovery artifact generation.
+- `--operator-handoff-check` now rejects stale `rdp-proof-recovery-plan.md` files when their failed-check commands no longer match `rdp-proof-check.json`.
+- `--verification-snapshot` now includes the RDP proof recovery-plan command and latest recovery-plan evidence summary for one-file GUI/LLM triage.
+- `--operator-handoff-check` now rejects stale `verification-snapshot.json` recovery-plan commands when they no longer match the canonical RDP proof recovery command.
+- Operator handoff packs now make `verification-snapshot.json.latest_evidence.rdp_proof_recovery_plan` pack-local and validate it against `rdp-proof-recovery-plan.md`.
+- `--operator-handoff-risk-summary` now includes the RDP proof recovery-plan command and pack-local recovery-plan summary, and `--operator-handoff-check` rejects stale risk-summary recovery-plan fields.
+- `--operator-handoff-risk-summary` now includes compact LLM triage entrypoint, required evidence files, and `early_triage_artifacts` response fields, with handoff validation against the verification snapshot.
+- The Verification Center and `gui-operator-actions.md` now include `Copy RDP Recovery Plan Command` for one-click access to the canonical recovery-plan export command.
+- `--verification-snapshot` now mirrors `rdp_proof_ok` and `rdp_proof_failed_checks` in its `risk` block for one-file LLM triage.
+- `--verification-snapshot` now mirrors risk blocker, acceptance criteria, next command, and next-success command for one-file operator/LLM triage.
+- Added `--rdp-proof-prompt`, a Verification Center copy action, and `rdp-proof-prompt.md` in handoff packs for a no-secrets operator/LLM prompt focused on the direct RDP smoke proof gate.
+- Added `--verification-snapshot` as the final command in the next-live-gate, live-gate-sequence, runbook, and command-index live-gate sequences.
+- Added `verification-snapshot.json` to operator handoff packs with manifest role, inspection-order entry, schema validation, and redaction coverage.
+- `--operator-handoff-check` now rejects stale `verification-snapshot.json` content when its completion, live-gate, or embedded handoff validity disagrees with the pack.
+- Added `--ai-brief-pack` for headless export of redacted AI/KI action, prompt-library, runbook, and verification briefs.
+- Added a Verification Center `Copy Env Check Command` action and GUI operator checklist step for the offline RDP env-file validator.
+- RDP env-file profile loading now rejects unfilled starter placeholders like `<host>` and `[REDACTED]` instead of treating them as valid live credentials.
+- KI readiness environment checks now treat the same unfilled RDP starter placeholders as missing, keeping GUI readiness and CLI preflight aligned.
+- Added `--rdp-preflight` headless JSON evidence for environment readiness, DNS/TCP reachability, credential presence, and timeout settings before running the full RDP smoke test.
+- Added `--ki-readiness-report` headless JSON readiness evidence for CI and handoff checks across OpenAI, RDP smoke-test environment, preferences, latest preflight, smoke, and live-gate evidence, missing requirements, and next-step guidance.
+- Added exact missing `AIVANA_RDP_TEST_*` variable names to headless KI readiness evidence.
+- Added `--ki-evidence-bundle` to persist redacted Markdown and JSON handoff bundles for readiness, preflight evidence, smoke-test evidence, live-gate evidence, AI brief-pack evidence, missing requirements, and next-step guidance.
+- Added `--completion-audit` prompt-to-artifact audit reports that map the current objective to implementation evidence and keep live AI/RDP gates blocked until OpenAI CUA is configured and persisted smoke-test evidence shows `connected=true`.
+- Added `--next-live-gate` to print and persist the first blocking live gate and exact next operator commands without parsing the full completion audit.
+- Added `--next-live-gate-json` to print the first blocking live gate, missing RDP environment, env template, and next commands as structured JSON.
+- Added exact missing RDP env vars and the redacted `.env` template to `--next-live-gate` output.
+- Added `--live-gate-runbook` to print and persist the audit-derived live gate runbook as redacted Markdown for operator and LLM handoff.
+- Added `--operator-handoff-pack` to persist redacted readiness, completion audit, command index, structured next-live-gate JSON, next-live-gate summary, live-gate runbook, GUI operator actions, summary, and a schema-versioned manifest with file roles and inspection order in one operator/LLM handoff folder.
+- Added `--goal-evidence-matrix` to print and persist a machine-readable requirement-to-artifact checklist with success criteria, verification commands, uncovered requirements, and next live gate for LLM/CI review.
+- Added `--goal-evidence-check` as a hard CI/LLM completion assertion that persists JSON and exits non-zero while the matrix has uncovered requirements.
+- Added `goal-evidence-matrix.json` and `goal-evidence-check.json` to the operator handoff pack, manifest roles, recommended inspection order, and LLM review checklist.
+- Added `--goal-evidence-matrix` and `--goal-evidence-check` to next-live-gate commands, live-gate runbook steps, and the recommended command-index live-gate sequence before handoff pack creation.
+- Added Verification Center and GUI operator checklist copy flow for hard goal evidence check JSON.
+- Added `--operator-handoff-check` to validate the latest handoff pack schema, expected files, file roles, and recommended inspection order as JSON.
+- `--operator-handoff-check` now validates machine-readable JSON schemas for `goal-evidence-matrix.json`, `command-index.json`, and `next-live-gate.json`.
+- `--operator-handoff-check` now validates consistency between manifest, completion audit, goal evidence matrix, and next-live-gate content.
+- Added `--operator-handoff-check` as the recommended handoff-pack validation step after handoff-pack creation.
+- Added `--operator-handoff-check` and the expanded handoff command path to the completion audit's headless CI/handoff evidence.
+- `--operator-handoff-check` now exits non-zero when the latest handoff pack is invalid, with `ok == true` documented in the command index.
+- Added `--operator-handoff-check` to `--next-live-gate` and `--next-live-gate-json` next-command output so blocker handoff and validation stay in one sequence.
+- Added operator handoff pack creation, `--operator-handoff-check` validation, and risk-summary gate steps to the live-gate runbook.
+- Added `--llm-review-prompt` to print and persist a focused redacted LLM reviewer prompt without generating the full operator handoff pack.
+- Added `--gui-operator-actions` to print and persist a redacted GUI action checklist for Verification Center, Mission Control, evidence matrix, and handoff-check validation controls.
+- Added `goal-evidence-matrix.json`, `goal-evidence-check.json`, and `command-index.json` to the LLM review prompt inspection checklist.
+- Added `--live-gate` to execute the headless live gate in one command with persisted preflight, optional smoke, readiness, completion audit, and redacted gate result evidence.
+- Added exact missing RDP env vars and a redacted `.env` template to persisted `--live-gate` reports.
+- Added `--rdp-env-file <path>` support for RDP preflight, smoke test, and live gate commands.
+- Added KI Verification Center for OpenAI key readiness, RDP smoke-test environment checks, persisted preference status, and copyable verification briefs.
+- Added Runbook LLM Briefs for model-assisted triage over available runbooks, actions, risks, and approval needs.
+- Added Prompt Library Briefs for diagnosis, runbook selection, ticket drafting, and verification prompts from the current KI action context.
+- Added AI Brief Pack export with redacted Markdown files and a JSON manifest for action, prompt-library, runbook, and verification briefs.
+- Added latest AI Brief Pack evidence summary to the KI Verification Center.
+- Added Policy Guardrail Briefs for active Autopilot safety behavior, allowed actions, approval gates, and denied destructive text.
+- Added OpenAI CUA Request Briefs for provider/model/goal/framebuffer/step/delay/guardrail preflight before hosted Computer Use.
+- Added KI Goal Audit controls in the Verification Center with blocker count, next-gate guidance, structured next-gate JSON copy, command-index JSON copy, visible handoff-check status, handoff-check JSON copy, latest handoff-pack and live-gate evidence, live-gate runbook, copyable RDP env template, copyable LLM review prompt, copyable Markdown checklist, JSON/Markdown export, and one-click Operator Handoff Pack export.
+- Added `--help`/`--ai-help` as an in-binary headless KI/RDP command reference for operator and LLM handoff workflows.
+- Added `--command-index` as a machine-readable JSON catalog for KI/RDP headless commands, output formats, persistence behavior, and live-gate success conditions.
+- Added a recommended live-gate sequence to `--command-index` for LLM and CI orchestration from env template through handoff pack, validation, and risk summary.
+- Added required environment variables and expected artifact folders to `--command-index` entries for live-gate automation.
+- Added profile ID and connected-at evidence to the Session Inspector.
 - Replaced legacy desktop documentation with Rust architecture notes.
 - Added Rust unit tests for model behavior, credentials, diagnostics, redaction, policy, certificate trust, screen observation, runbooks, memory, AI explanations, and evidence export.

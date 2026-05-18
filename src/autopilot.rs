@@ -97,6 +97,7 @@ pub struct AutopilotStep {
     pub model_summary: String,
     pub action_description: String,
     pub action: Option<InputAction>,
+    pub actions: Vec<InputAction>,
     pub risk: RiskLevel,
     pub decision: PolicyDecision,
     pub verification: Option<VerificationResult>,
@@ -110,6 +111,7 @@ pub struct AutopilotPlan {
     pub call_id: Option<String>,
     pub summary: String,
     pub action: Option<InputAction>,
+    pub actions: Vec<InputAction>,
     pub action_description: String,
     pub safety_checks: Vec<OpenAiSafetyCheck>,
     pub completed: bool,
@@ -255,7 +257,8 @@ impl AutopilotProvider for LocalAutopilotProvider {
             response_id: None,
             call_id: None,
             summary: format!("Local planner: {}", request.observation.summary),
-            action: Some(action.action),
+            action: Some(action.action.clone()),
+            actions: vec![action.action],
             action_description: action.description,
             safety_checks: Vec::new(),
             completed: false,
@@ -332,7 +335,7 @@ impl AutopilotProvider for OpenAiComputerUseProvider {
                 "call_id": call_id,
                 "acknowledged_safety_checks": request.acknowledged_safety_checks,
                 "output": {
-                    "type": "input_image",
+                    "type": "computer_screenshot",
                     "image_url": screenshot
                 }
             }]);
@@ -444,9 +447,13 @@ fn openai_response_to_plan(response: OpenAiResponse) -> Result<AutopilotPlan> {
                 actions,
                 pending_safety_checks,
             } => {
-                let action = action.or_else(|| actions.into_iter().next());
+                let mut planned_actions = Vec::new();
                 if let Some(action) = action {
-                    computer_call = Some((call_id, action, pending_safety_checks));
+                    planned_actions.push(action);
+                }
+                planned_actions.extend(actions);
+                if !planned_actions.is_empty() {
+                    computer_call = Some((call_id, planned_actions, pending_safety_checks));
                 }
             }
             OpenAiOutputItem::Reasoning {
@@ -459,8 +466,12 @@ fn openai_response_to_plan(response: OpenAiResponse) -> Result<AutopilotPlan> {
         }
     }
 
-    if let Some((call_id, action, safety_checks)) = computer_call {
-        let mapped = map_openai_action(action)?;
+    if let Some((call_id, actions, safety_checks)) = computer_call {
+        let mapped = actions
+            .into_iter()
+            .map(map_openai_action)
+            .collect::<Result<Vec<_>>>()?;
+        let first = mapped.first().cloned();
         return Ok(AutopilotPlan {
             response_id: response.id,
             call_id,
@@ -469,8 +480,9 @@ fn openai_response_to_plan(response: OpenAiResponse) -> Result<AutopilotPlan> {
             } else {
                 summary.join(" ")
             },
-            action_description: describe_action(&mapped),
-            action: Some(mapped),
+            action_description: describe_actions(&mapped),
+            action: first,
+            actions: mapped,
             safety_checks,
             completed: false,
         });
@@ -486,6 +498,7 @@ fn openai_response_to_plan(response: OpenAiResponse) -> Result<AutopilotPlan> {
         },
         action_description: "No further action".to_owned(),
         action: None,
+        actions: Vec::new(),
         safety_checks: Vec::new(),
         completed: true,
     })
@@ -592,6 +605,21 @@ fn describe_action(action: &InputAction) -> String {
         InputAction::Wait { millis } => format!("wait {millis}ms"),
         InputAction::Screenshot => "screenshot".to_owned(),
         InputAction::Verify { expectation } => format!("verify {expectation}"),
+    }
+}
+
+fn describe_actions(actions: &[InputAction]) -> String {
+    match actions {
+        [] => "No further action".to_owned(),
+        [single] => describe_action(single),
+        many => format!(
+            "{} batched actions: {}",
+            many.len(),
+            many.iter()
+                .map(describe_action)
+                .collect::<Vec<_>>()
+                .join("; ")
+        ),
     }
 }
 
@@ -743,6 +771,11 @@ mod tests {
             plan.action,
             Some(InputAction::Click { x: 405, y: 157, .. })
         ));
+        assert_eq!(plan.actions.len(), 2);
+        assert!(matches!(
+            plan.actions[1],
+            InputAction::TypeText { ref text } if text == "penguin"
+        ));
     }
 
     #[test]
@@ -757,6 +790,7 @@ mod tests {
             model_summary: "summary".to_owned(),
             action_description: "wait".to_owned(),
             action: Some(InputAction::Wait { millis: 1 }),
+            actions: vec![InputAction::Wait { millis: 1 }],
             risk: RiskLevel::ReadOnly,
             decision: PolicyDecision::Allow,
             verification: None,

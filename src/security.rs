@@ -226,19 +226,34 @@ struct ProtectedCredentialRecord {
 }
 
 pub fn redact_secret_text(input: &str) -> String {
-    input
-        .split_whitespace()
-        .map(|part| {
-            let lower = part.to_lowercase();
-            for marker in ["password=", "pwd=", "token=", "secret="] {
-                if lower.starts_with(marker) {
-                    return format!("{marker}[REDACTED]");
-                }
+    let mut redacted = String::with_capacity(input.len());
+    let mut token = String::new();
+    for ch in input.chars() {
+        if ch.is_whitespace() {
+            if !token.is_empty() {
+                redacted.push_str(&redact_secret_token(&token));
+                token.clear();
             }
-            part.to_owned()
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
+            redacted.push(ch);
+        } else {
+            token.push(ch);
+        }
+    }
+    if !token.is_empty() {
+        redacted.push_str(&redact_secret_token(&token));
+    }
+    redacted
+}
+
+fn redact_secret_token(token: &str) -> String {
+    let lower = token.to_lowercase();
+    for marker in ["password=", "pwd=", "token=", "secret="] {
+        if let Some(index) = lower.find(marker) {
+            let original_marker = &token[index..index + marker.len()];
+            return format!("{}{}[REDACTED]", &token[..index], original_marker);
+        }
+    }
+    token.to_owned()
 }
 
 pub fn app_data_file(file: &str) -> Result<PathBuf> {
@@ -411,6 +426,18 @@ mod tests {
         assert_eq!(
             redact_secret_text("password=hunter2 token=abc"),
             "password=[REDACTED] token=[REDACTED]"
+        );
+        assert_eq!(
+            redact_secret_text("error=password=hunter2 detail=token=abc"),
+            "error=password=[REDACTED] detail=token=[REDACTED]"
+        );
+        assert_eq!(
+            redact_secret_text("line1 password=hunter2\nline2 token=abc"),
+            "line1 password=[REDACTED]\nline2 token=[REDACTED]"
+        );
+        assert_eq!(
+            redact_secret_text("AIVANA_RDP_TEST_PASSWORD=hunter2"),
+            "AIVANA_RDP_TEST_PASSWORD=[REDACTED]"
         );
     }
 

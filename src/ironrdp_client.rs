@@ -1,21 +1,28 @@
+use std::collections::HashMap;
 use std::io::{Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
+use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender, TryRecvError};
 use std::time::{Duration, Instant};
 
 use anyhow::{Context, Result};
+use chrono::{DateTime, Utc};
 use ironrdp::connector::{self, ConnectionResult, Credentials};
 use ironrdp::pdu::gcc::KeyboardType;
 use ironrdp::pdu::rdp::capability_sets::MajorPlatformType;
 use ironrdp::session::image::DecodedImage;
 use ironrdp::session::{ActiveStage, ActiveStageOutput};
 use ironrdp_pdu::rdp::client_info::{PerformanceFlags, TimezoneInfo};
+use serde::Serialize;
 use sspi::network_client::reqwest_network_client::ReqwestNetworkClient;
 use tokio_rustls::rustls;
 
 use crate::legacy_rdp::{LegacySecurityMode, detect_server_security};
 use crate::models::ConnectionProfile;
 use crate::models::{DirtyRegion, EngineEvent, FrameUpdate, InputAction, MouseButton};
+use crate::security::{app_data_file, redact_secret_text};
+
+pub const DEFAULT_RDP_SMOKE_TIMEOUT_SECS: u64 = 30;
 
 type UpgradedFramed = ironrdp_blocking::Framed<RdpTransport>;
 
@@ -63,6 +70,59 @@ pub struct IronRdpRuntime {
     pub input: Receiver<InputAction>,
 }
 
+#[derive(Clone, Debug, Serialize)]
+pub struct RdpSmokeTestReport {
+    pub report_id: uuid::Uuid,
+    pub session_id: uuid::Uuid,
+    pub generated_at: DateTime<Utc>,
+    pub host: String,
+    pub port: u16,
+    pub connected: bool,
+    pub timeout_secs: u64,
+    pub framebuffer: RdpSmokeFramebufferReport,
+    pub input_probe: String,
+    pub elapsed_millis: u128,
+    pub last_diagnostic: String,
+    pub evidence_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct RdpSmokeTestFailureReport {
+    pub report_id: uuid::Uuid,
+    pub generated_at: DateTime<Utc>,
+    pub connected: bool,
+    pub timeout_secs: u64,
+    pub error: String,
+    pub expected_environment: Vec<&'static str>,
+    pub evidence_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct RdpEnvFileCheckReport {
+    pub report_id: uuid::Uuid,
+    pub generated_at: DateTime<Utc>,
+    pub schema: &'static str,
+    pub ok: bool,
+    pub path: Option<String>,
+    pub host: Option<String>,
+    pub port: Option<u16>,
+    pub username_set: bool,
+    pub password_set: bool,
+    pub timeout_secs: u64,
+    pub network_checked: bool,
+    pub error: Option<String>,
+    pub expected_environment: Vec<&'static str>,
+    pub evidence_path: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct RdpSmokeFramebufferReport {
+    pub width: u16,
+    pub height: u16,
+    pub frame_hash: u64,
+    pub dirty_regions: usize,
+}
+
 pub fn probe_server_fingerprint(profile: &ConnectionProfile) -> Result<String> {
     block_unsupported_legacy_standard(profile)?;
     let config = build_config(profile);
@@ -99,6 +159,106 @@ fn probe_server_fingerprint_with_config(
     Ok(fingerprint_bytes(&server_public_key))
 }
 
+pub fn rdp_smoke_timeout_secs_from_args(args: &[String]) -> u64 {
+    let env_file = rdp_env_file_values_from_args(args).ok().flatten();
+    let env_value = env_file
+        .as_ref()
+        .and_then(|values| values.get("AIVANA_RDP_TEST_TIMEOUT_SECS").cloned())
+        .or_else(|| std::env::var("AIVANA_RDP_TEST_TIMEOUT_SECS").ok());
+    resolve_rdp_smoke_timeout_secs(
+        args.iter().map(String::as_str),
+        env_value.as_deref(),
+        DEFAULT_RDP_SMOKE_TIMEOUT_SECS,
+    )
+}
+
+pub fn rdp_env_file_path_from_args(args: &[String]) -> Option<PathBuf> {
+    let mut args = args.iter();
+    while let Some(arg) = args.next() {
+        if let Some(value) = arg.strip_prefix("--rdp-env-file=") {
+            if !value.trim().is_empty() {
+                return Some(PathBuf::from(value.trim()));
+            }
+        } else if arg == "--rdp-env-file" {
+            if let Some(value) = args.next().filter(|value| !value.trim().is_empty()) {
+                return Some(PathBuf::from(value.trim()));
+            }
+        }
+    }
+    None
+}
+
+fn rdp_env_file_values_from_args(args: &[String]) -> Result<Option<HashMap<String, String>>> {
+    let Some(path) = rdp_env_file_path_from_args(args) else {
+        return Ok(None);
+    };
+    Ok(Some(parse_rdp_env_file(
+        &std::fs::read_to_string(&path)
+            .with_context(|| format!("read RDP env file {}", path.display()))?,
+    )))
+}
+
+fn parse_rdp_env_file(text: &str) -> HashMap<String, String> {
+    let mut values = HashMap::new();
+    for line in text.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = trimmed.split_once('=') else {
+            continue;
+        };
+        let key = key.trim();
+        if !key.starts_with("AIVANA_RDP_TEST_") {
+            continue;
+        }
+        values.insert(key.to_owned(), unquote_env_value(value.trim()).to_owned());
+    }
+    values
+}
+
+fn unquote_env_value(value: &str) -> &str {
+    if value.len() >= 2 {
+        let bytes = value.as_bytes();
+        if (bytes[0] == b'"' && bytes[value.len() - 1] == b'"')
+            || (bytes[0] == b'\'' && bytes[value.len() - 1] == b'\'')
+        {
+            return &value[1..value.len() - 1];
+        }
+    }
+    value
+}
+
+fn resolve_rdp_smoke_timeout_secs<'a, I>(args: I, env_value: Option<&str>, default_secs: u64) -> u64
+where
+    I: IntoIterator<Item = &'a str>,
+{
+    let mut timeout = env_value
+        .and_then(parse_rdp_smoke_timeout_secs)
+        .unwrap_or(default_secs);
+    let mut args = args.into_iter();
+    while let Some(arg) = args.next() {
+        if let Some(value) = arg.strip_prefix("--rdp-smoke-timeout=") {
+            if let Some(parsed) = parse_rdp_smoke_timeout_secs(value) {
+                timeout = parsed;
+            }
+        } else if arg == "--rdp-smoke-timeout" {
+            if let Some(value) = args.next().and_then(parse_rdp_smoke_timeout_secs) {
+                timeout = value;
+            }
+        }
+    }
+    timeout
+}
+
+fn parse_rdp_smoke_timeout_secs(value: &str) -> Option<u64> {
+    value
+        .trim()
+        .parse::<u64>()
+        .ok()
+        .map(|secs| secs.clamp(5, 600))
+}
+
 pub fn run_session(runtime: IronRdpRuntime) {
     let session_id = runtime.session_id;
     let events = runtime.events.clone();
@@ -113,6 +273,250 @@ pub fn run_session(runtime: IronRdpRuntime) {
             })
             .ok();
     }
+}
+
+pub fn rdp_test_profile_from_args(args: &[String]) -> Result<ConnectionProfile> {
+    let values = rdp_env_file_values_from_args(args)?;
+    rdp_test_profile_from_values(values.as_ref())
+}
+
+pub fn rdp_env_file_check_report_from_args(
+    args: &[String],
+    timeout_secs: u64,
+) -> RdpEnvFileCheckReport {
+    let path = rdp_env_file_path_from_args(args).map(|path| path.display().to_string());
+    match rdp_test_profile_from_args(args) {
+        Ok(profile) => RdpEnvFileCheckReport {
+            report_id: uuid::Uuid::new_v4(),
+            generated_at: Utc::now(),
+            schema: "aivana.rdp-env-file-check.v1",
+            ok: true,
+            path,
+            host: Some(redact_secret_text(&profile.host)),
+            port: Some(profile.port),
+            username_set: !profile.username.trim().is_empty(),
+            password_set: !profile.password.trim().is_empty() || profile.credential_id.is_some(),
+            timeout_secs,
+            network_checked: false,
+            error: None,
+            expected_environment: rdp_test_expected_environment(),
+            evidence_path: None,
+        },
+        Err(error) => RdpEnvFileCheckReport {
+            report_id: uuid::Uuid::new_v4(),
+            generated_at: Utc::now(),
+            schema: "aivana.rdp-env-file-check.v1",
+            ok: false,
+            path,
+            host: None,
+            port: None,
+            username_set: false,
+            password_set: false,
+            timeout_secs,
+            network_checked: false,
+            error: Some(redact_secret_text(&error.to_string())),
+            expected_environment: rdp_test_expected_environment(),
+            evidence_path: None,
+        },
+    }
+}
+
+pub fn save_rdp_env_file_check_report(
+    report: &RdpEnvFileCheckReport,
+) -> Result<std::path::PathBuf> {
+    let dir = app_data_file("rdp-env-file-checks")?;
+    std::fs::create_dir_all(&dir)?;
+    let suffix = if report.ok { "ok" } else { "failed" };
+    let path = dir.join(format!("{}-{suffix}.json", report.report_id));
+    let json =
+        serde_json::to_string_pretty(report).context("serialize RDP env file check report")?;
+    std::fs::write(&path, json).context("write RDP env file check report")?;
+    Ok(path)
+}
+
+fn rdp_test_profile_from_values(
+    values: Option<&HashMap<String, String>>,
+) -> Result<ConnectionProfile> {
+    let host = rdp_test_value(values, "AIVANA_RDP_TEST_HOST")?;
+    let username = rdp_test_value(values, "AIVANA_RDP_TEST_USER")?;
+    let password = rdp_test_value(values, "AIVANA_RDP_TEST_PASSWORD")?;
+    let domain = rdp_test_optional_value(values, "AIVANA_RDP_TEST_DOMAIN").unwrap_or_default();
+    let port = rdp_test_optional_value(values, "AIVANA_RDP_TEST_PORT")
+        .and_then(|value| value.parse::<u16>().ok())
+        .unwrap_or(3389);
+
+    let mut profile = ConnectionProfile::sample("manual-rdp-smoke", &host, "Manual", false);
+    profile.port = port;
+    profile.username = username;
+    profile.password = password;
+    profile.domain = domain;
+
+    Ok(profile)
+}
+
+fn rdp_test_value(values: Option<&HashMap<String, String>>, key: &'static str) -> Result<String> {
+    let Some(value) = rdp_test_optional_value(values, key).filter(|value| !value.trim().is_empty())
+    else {
+        anyhow::bail!("{key} is required");
+    };
+    if is_unfilled_rdp_test_placeholder(&value) {
+        anyhow::bail!("{key} must be filled; placeholder value is not valid");
+    }
+    Ok(value)
+}
+
+fn rdp_test_optional_value(values: Option<&HashMap<String, String>>, key: &str) -> Option<String> {
+    values
+        .and_then(|values| values.get(key).cloned())
+        .or_else(|| std::env::var(key).ok())
+}
+
+pub(crate) fn is_unfilled_rdp_test_placeholder(value: &str) -> bool {
+    let trimmed = value.trim();
+    let lower = trimmed.to_ascii_lowercase();
+    lower == "[redacted]"
+        || lower == "redacted"
+        || (trimmed.starts_with('<') && trimmed.ends_with('>'))
+}
+
+pub fn rdp_smoke_test(profile: ConnectionProfile, timeout_secs: u64) -> Result<RdpSmokeTestReport> {
+    let (events, receiver) = std::sync::mpsc::channel();
+    let (input, input_receiver) = std::sync::mpsc::channel();
+    let session_id = uuid::Uuid::new_v4();
+    let host = profile.host.clone();
+    let port = profile.port;
+
+    std::thread::spawn(move || {
+        run_session(IronRdpRuntime {
+            profile,
+            session_id,
+            events,
+            input: input_receiver,
+        });
+    });
+
+    let timeout = Duration::from_secs(timeout_secs.max(5));
+    let started = Instant::now();
+    let deadline = Instant::now() + timeout;
+    let mut saw_connected = false;
+    let mut frame_info = None;
+    let mut last_diagnostic = String::new();
+
+    while Instant::now() < deadline {
+        match receiver.recv_timeout(Duration::from_millis(500)) {
+            Ok(EngineEvent::StatusChanged { status, .. }) => {
+                saw_connected |= status == crate::models::SessionStatus::Connected;
+            }
+            Ok(EngineEvent::Diagnostic { message, .. }) => {
+                last_diagnostic = message;
+            }
+            Ok(EngineEvent::Frame(frame)) => {
+                let center_x = frame.width / 2;
+                let center_y = frame.height / 2;
+                let _ = input.send(InputAction::MovePointer {
+                    x: center_x,
+                    y: center_y,
+                });
+                frame_info = Some((
+                    frame.width,
+                    frame.height,
+                    frame.frame_hash,
+                    frame.dirty_regions.len(),
+                ));
+                break;
+            }
+            Ok(EngineEvent::Error { class, message, .. }) => {
+                anyhow::bail!("session error {class:?}: {message}");
+            }
+            Ok(EngineEvent::Disconnected { reason, .. }) => {
+                anyhow::bail!("session disconnected before framebuffer: {reason}");
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                anyhow::bail!("session event channel closed before framebuffer");
+            }
+        }
+    }
+
+    drop(input);
+    let Some((width, height, frame_hash, dirty_regions)) = frame_info else {
+        anyhow::bail!(
+            "RDP smoke test timed out after {}s; connected={saw_connected}; last diagnostic={last_diagnostic}",
+            timeout.as_secs()
+        );
+    };
+    if !saw_connected {
+        anyhow::bail!(
+            "framebuffer arrived before connected status; last diagnostic={last_diagnostic}"
+        );
+    }
+
+    Ok(RdpSmokeTestReport {
+        report_id: uuid::Uuid::new_v4(),
+        session_id,
+        generated_at: Utc::now(),
+        host: redact_secret_text(&host),
+        port,
+        connected: true,
+        timeout_secs: timeout.as_secs(),
+        framebuffer: RdpSmokeFramebufferReport {
+            width,
+            height,
+            frame_hash,
+            dirty_regions,
+        },
+        input_probe: "pointer_move_sent".to_owned(),
+        elapsed_millis: started.elapsed().as_millis(),
+        last_diagnostic: redact_secret_text(&last_diagnostic),
+        evidence_path: None,
+    })
+}
+
+pub fn save_rdp_smoke_report(report: &RdpSmokeTestReport) -> Result<std::path::PathBuf> {
+    let dir = app_data_file("rdp-smoke-tests")?;
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(format!("{}.json", report.report_id));
+    let json = serde_json::to_string_pretty(report).context("serialize RDP smoke report")?;
+    std::fs::write(&path, json).context("write RDP smoke report")?;
+    Ok(path)
+}
+
+pub fn rdp_smoke_failure_report(
+    error: &anyhow::Error,
+    timeout_secs: u64,
+) -> RdpSmokeTestFailureReport {
+    RdpSmokeTestFailureReport {
+        report_id: uuid::Uuid::new_v4(),
+        generated_at: Utc::now(),
+        connected: false,
+        timeout_secs,
+        error: redact_secret_text(&format!("{error:#}")),
+        expected_environment: rdp_test_expected_environment(),
+        evidence_path: None,
+    }
+}
+
+fn rdp_test_expected_environment() -> Vec<&'static str> {
+    vec![
+        "AIVANA_RDP_TEST_HOST",
+        "AIVANA_RDP_TEST_USER",
+        "AIVANA_RDP_TEST_PASSWORD",
+        "AIVANA_RDP_TEST_PORT (optional)",
+        "AIVANA_RDP_TEST_DOMAIN (optional)",
+        "AIVANA_RDP_TEST_TIMEOUT_SECS (optional, 5-600)",
+    ]
+}
+
+pub fn save_rdp_smoke_failure_report(
+    report: &RdpSmokeTestFailureReport,
+) -> Result<std::path::PathBuf> {
+    let dir = app_data_file("rdp-smoke-tests")?;
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join(format!("{}-failed.json", report.report_id));
+    let json =
+        serde_json::to_string_pretty(report).context("serialize RDP smoke failure report")?;
+    std::fs::write(&path, json).context("write RDP smoke failure report")?;
+    Ok(path)
 }
 
 fn run_session_inner(runtime: IronRdpRuntime) -> Result<()> {
@@ -737,6 +1141,205 @@ mod tests {
 
         let event = receiver.try_recv().expect("runtime error event");
         assert!(matches!(event, EngineEvent::Error { .. }));
+    }
+
+    #[test]
+    fn smoke_report_serializes_as_structured_json() {
+        let report = RdpSmokeTestReport {
+            report_id: uuid::Uuid::new_v4(),
+            session_id: uuid::Uuid::new_v4(),
+            generated_at: Utc::now(),
+            host: "server.internal".to_owned(),
+            port: 3389,
+            connected: true,
+            timeout_secs: 45,
+            framebuffer: RdpSmokeFramebufferReport {
+                width: 1280,
+                height: 800,
+                frame_hash: 42,
+                dirty_regions: 1,
+            },
+            input_probe: "pointer_move_sent".to_owned(),
+            elapsed_millis: 1500,
+            last_diagnostic: "password=[REDACTED]".to_owned(),
+            evidence_path: Some("C:\\tmp\\smoke.json".to_owned()),
+        };
+
+        let json = serde_json::to_string(&report).expect("serialized smoke report");
+
+        assert!(json.contains("\"connected\":true"));
+        assert!(json.contains("\"timeout_secs\":45"));
+        assert!(json.contains("\"framebuffer\""));
+        assert!(json.contains("\"input_probe\":\"pointer_move_sent\""));
+        assert!(json.contains("\"evidence_path\""));
+        assert!(json.contains("password=[REDACTED]"));
+    }
+
+    #[test]
+    fn smoke_failure_report_redacts_and_lists_required_env() {
+        let err = anyhow::anyhow!("connect failed password=hunter2");
+        let report = rdp_smoke_failure_report(&err, 60);
+
+        let json = serde_json::to_string(&report).expect("serialized smoke failure");
+
+        assert!(json.contains("\"connected\":false"));
+        assert!(json.contains("\"timeout_secs\":60"));
+        assert!(json.contains("AIVANA_RDP_TEST_HOST"));
+        assert!(json.contains("AIVANA_RDP_TEST_TIMEOUT_SECS"));
+        assert!(json.contains("password=[REDACTED]"));
+        assert!(!json.contains("hunter2"));
+    }
+
+    #[test]
+    fn smoke_timeout_prefers_cli_and_clamps_bounds() {
+        assert_eq!(
+            resolve_rdp_smoke_timeout_secs(["app", "--rdp-smoke-test"], Some("90"), 30),
+            90
+        );
+        assert_eq!(
+            resolve_rdp_smoke_timeout_secs(
+                ["app", "--rdp-smoke-test", "--rdp-smoke-timeout", "120"],
+                Some("90"),
+                30
+            ),
+            120
+        );
+        assert_eq!(
+            resolve_rdp_smoke_timeout_secs(["app", "--rdp-smoke-timeout=1"], None, 30),
+            5
+        );
+        assert_eq!(
+            resolve_rdp_smoke_timeout_secs(["app", "--rdp-smoke-timeout=999"], None, 30),
+            600
+        );
+    }
+
+    #[test]
+    fn rdp_env_file_parser_accepts_aivana_keys_and_quotes() {
+        let values = parse_rdp_env_file(
+            r#"
+# comment
+AIVANA_RDP_TEST_HOST="rdp.example.local"
+AIVANA_RDP_TEST_USER='operator'
+AIVANA_RDP_TEST_PASSWORD=secret
+AIVANA_RDP_TEST_PORT=3390
+IGNORED=value
+"#,
+        );
+
+        assert_eq!(
+            values.get("AIVANA_RDP_TEST_HOST").map(String::as_str),
+            Some("rdp.example.local")
+        );
+        assert_eq!(
+            values.get("AIVANA_RDP_TEST_USER").map(String::as_str),
+            Some("operator")
+        );
+        assert_eq!(
+            values.get("AIVANA_RDP_TEST_PASSWORD").map(String::as_str),
+            Some("secret")
+        );
+        assert_eq!(
+            values.get("AIVANA_RDP_TEST_PORT").map(String::as_str),
+            Some("3390")
+        );
+        assert!(!values.contains_key("IGNORED"));
+    }
+
+    #[test]
+    fn rdp_env_file_path_accepts_split_and_equals_forms() {
+        let split = vec![
+            "app".to_owned(),
+            "--rdp-env-file".to_owned(),
+            "C:\\tmp\\rdp.env".to_owned(),
+        ];
+        let equals = vec![
+            "app".to_owned(),
+            "--rdp-env-file=C:\\tmp\\rdp.env".to_owned(),
+        ];
+
+        assert_eq!(
+            rdp_env_file_path_from_args(&split)
+                .as_deref()
+                .and_then(|path| path.to_str()),
+            Some("C:\\tmp\\rdp.env")
+        );
+        assert_eq!(
+            rdp_env_file_path_from_args(&equals)
+                .as_deref()
+                .and_then(|path| path.to_str()),
+            Some("C:\\tmp\\rdp.env")
+        );
+    }
+
+    #[test]
+    fn rdp_test_profile_rejects_unfilled_template_placeholders() {
+        assert!(is_unfilled_rdp_test_placeholder("[REDACTED]"));
+        assert!(is_unfilled_rdp_test_placeholder("<password>"));
+
+        let values = parse_rdp_env_file(
+            r#"
+AIVANA_RDP_TEST_HOST=<host>
+AIVANA_RDP_TEST_USER=operator
+AIVANA_RDP_TEST_PASSWORD=[REDACTED]
+AIVANA_RDP_TEST_PORT=3389
+"#,
+        );
+
+        let error = rdp_test_profile_from_values(Some(&values))
+            .expect_err("template placeholders should not create a test profile")
+            .to_string();
+
+        assert!(error.contains("AIVANA_RDP_TEST_HOST"));
+        assert!(error.contains("placeholder value is not valid"));
+    }
+
+    #[test]
+    fn rdp_test_profile_accepts_filled_env_file_values() {
+        let values = parse_rdp_env_file(
+            r#"
+AIVANA_RDP_TEST_HOST=rdp.example.local
+AIVANA_RDP_TEST_USER=operator
+AIVANA_RDP_TEST_PASSWORD=secret
+AIVANA_RDP_TEST_PORT=3390
+"#,
+        );
+
+        let profile =
+            rdp_test_profile_from_values(Some(&values)).expect("filled env file creates profile");
+
+        assert_eq!(profile.host, "rdp.example.local");
+        assert_eq!(profile.username, "operator");
+        assert_eq!(profile.password, "secret");
+        assert_eq!(profile.port, 3390);
+    }
+
+    #[test]
+    fn rdp_env_file_check_report_persists_json_evidence() {
+        let report = RdpEnvFileCheckReport {
+            report_id: uuid::Uuid::new_v4(),
+            generated_at: Utc::now(),
+            schema: "aivana.rdp-env-file-check.v1",
+            ok: false,
+            path: Some("C:\\tmp\\rdp-live.env".to_owned()),
+            host: None,
+            port: None,
+            username_set: false,
+            password_set: false,
+            timeout_secs: 90,
+            network_checked: false,
+            error: Some("AIVANA_RDP_TEST_PASSWORD must be filled".to_owned()),
+            expected_environment: rdp_test_expected_environment(),
+            evidence_path: None,
+        };
+
+        let path = save_rdp_env_file_check_report(&report).expect("saved env file check report");
+        let json = std::fs::read_to_string(&path).expect("read env file check report");
+        let _ = std::fs::remove_file(&path);
+
+        assert!(json.contains("aivana.rdp-env-file-check.v1"));
+        assert!(json.contains("network_checked"));
+        assert!(json.contains("AIVANA_RDP_TEST_PASSWORD"));
     }
 
     #[test]

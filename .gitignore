@@ -12,6 +12,10 @@
 publish/
 dist/
 
+# Local live verification secrets
+rdp-live.env
+*.local.env
+
 # Local OS files
 Thumbs.db
 Desktop.ini

@@ -2,10 +2,13 @@ use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
 use chrono::Utc;
+use serde::Serialize;
+use uuid::Uuid;
 
 use crate::models::{
     ConnectionProfile, DiagnosticClass, DiagnosticFinding, DiagnosticSeverity, PreflightReport,
 };
+use crate::security::{app_data_file, redact_secret_text};
 
 pub trait PreflightService {
     fn run(&self, profile: &ConnectionProfile) -> PreflightReport;
@@ -13,6 +16,89 @@ pub trait PreflightService {
 
 #[derive(Default)]
 pub struct LocalPreflightService;
+
+#[derive(Clone, Debug, Serialize)]
+pub struct RdpPreflightEvidenceReport {
+    pub report_id: Uuid,
+    pub generated_at: chrono::DateTime<Utc>,
+    pub host: String,
+    pub port: u16,
+    pub timeout_secs: u64,
+    pub username_set: bool,
+    pub password_set: bool,
+    pub connect_recommended: bool,
+    pub env_error: Option<String>,
+    pub expected_environment: Vec<&'static str>,
+    pub findings: Vec<DiagnosticFinding>,
+    pub evidence_path: Option<String>,
+}
+
+pub fn build_rdp_preflight_evidence(
+    profile: &ConnectionProfile,
+    timeout_secs: u64,
+) -> RdpPreflightEvidenceReport {
+    let report = LocalPreflightService.run(profile);
+    RdpPreflightEvidenceReport {
+        report_id: Uuid::new_v4(),
+        generated_at: Utc::now(),
+        host: redact_secret_text(&profile.host),
+        port: profile.port,
+        timeout_secs,
+        username_set: !profile.username.trim().is_empty(),
+        password_set: !profile.password.trim().is_empty() || profile.credential_id.is_some(),
+        connect_recommended: report.connect_recommended,
+        env_error: None,
+        expected_environment: rdp_preflight_expected_environment(),
+        findings: report.findings,
+        evidence_path: None,
+    }
+}
+
+pub fn rdp_preflight_env_failure(
+    error: &anyhow::Error,
+    timeout_secs: u64,
+) -> RdpPreflightEvidenceReport {
+    RdpPreflightEvidenceReport {
+        report_id: Uuid::new_v4(),
+        generated_at: Utc::now(),
+        host: "unknown-host".to_owned(),
+        port: 3389,
+        timeout_secs,
+        username_set: false,
+        password_set: false,
+        connect_recommended: false,
+        env_error: Some(redact_secret_text(&format!("{error:#}"))),
+        expected_environment: rdp_preflight_expected_environment(),
+        findings: Vec::new(),
+        evidence_path: None,
+    }
+}
+
+pub fn save_rdp_preflight_evidence(
+    report: &RdpPreflightEvidenceReport,
+) -> anyhow::Result<std::path::PathBuf> {
+    let dir = app_data_file("rdp-preflight")?;
+    std::fs::create_dir_all(&dir)?;
+    let suffix = if report.connect_recommended {
+        "ready"
+    } else {
+        "blocked"
+    };
+    let path = dir.join(format!("{}-{suffix}.json", report.report_id));
+    std::fs::write(&path, serde_json::to_string_pretty(report)?)?;
+    Ok(path)
+}
+
+fn rdp_preflight_expected_environment() -> Vec<&'static str> {
+    vec![
+        "AIVANA_RDP_TEST_HOST",
+        "AIVANA_RDP_TEST_USER",
+        "AIVANA_RDP_TEST_PASSWORD",
+        "AIVANA_RDP_TEST_PORT (optional)",
+        "AIVANA_RDP_TEST_DOMAIN (optional)",
+        "AIVANA_RDP_TEST_TIMEOUT_SECS (optional, 5-600)",
+    ]
+}
 
 impl PreflightService for LocalPreflightService {
     fn run(&self, profile: &ConnectionProfile) -> PreflightReport {
@@ -143,5 +229,36 @@ mod tests {
             classify_error("negotiation failure: server only supports Standard RDP Security"),
             DiagnosticClass::Protocol
         );
+    }
+
+    #[test]
+    fn rdp_preflight_env_failure_redacts_and_lists_requirements() {
+        let err = anyhow::anyhow!("missing password=hunter2");
+        let report = rdp_preflight_env_failure(&err, 90);
+        let json = serde_json::to_string(&report).expect("serialized preflight failure");
+
+        assert!(!report.connect_recommended);
+        assert_eq!(report.timeout_secs, 90);
+        assert!(json.contains("AIVANA_RDP_TEST_HOST"));
+        assert!(json.contains("AIVANA_RDP_TEST_TIMEOUT_SECS"));
+        assert!(json.contains("password=[REDACTED]"));
+        assert!(!json.contains("hunter2"));
+    }
+
+    #[test]
+    fn rdp_preflight_evidence_reports_missing_host_without_secret_leak() {
+        let mut profile = ConnectionProfile::sample("preflight", "", "Manual", false);
+        profile.username = "user".to_owned();
+        profile.password = "password=hunter2".to_owned();
+
+        let report = build_rdp_preflight_evidence(&profile, 45);
+        let json = serde_json::to_string(&report).expect("serialized preflight evidence");
+
+        assert!(!report.connect_recommended);
+        assert_eq!(report.timeout_secs, 45);
+        assert!(report.username_set);
+        assert!(report.password_set);
+        assert!(json.contains("Host fehlt"));
+        assert!(!json.contains("hunter2"));
     }
 }

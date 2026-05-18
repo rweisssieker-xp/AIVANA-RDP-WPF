@@ -326,6 +326,8 @@ pub struct ApprovalRequest {
     pub session_id: Option<Uuid>,
     pub description: String,
     pub action: InputAction,
+    #[serde(default)]
+    pub actions: Vec<InputAction>,
     pub reason: String,
     pub expected_result: String,
     pub risk: RiskLevel,

@@ -115,6 +115,7 @@ impl<P: AiProvider> ComputerUseAgent<P> {
             session_id: action.session_id,
             description: action.description.clone(),
             action: action.action.clone(),
+            actions: vec![action.action.clone()],
             reason,
             expected_result: "Aivana verifies the next framebuffer after execution.".to_owned(),
             risk: action.risk,
@@ -188,5 +189,24 @@ mod tests {
                 .iter()
                 .any(|d| d.kind == DialogKind::BlackScreen)
         );
+    }
+
+    #[test]
+    fn approval_request_preserves_executable_action_list() {
+        let agent = ComputerUseAgent::default();
+        let action = AiAction {
+            id: Uuid::new_v4(),
+            session_id: Some(Uuid::new_v4()),
+            description: "type text".to_owned(),
+            action: InputAction::TypeText {
+                text: "hello".to_owned(),
+            },
+            risk: crate::models::RiskLevel::ElevatedRisk,
+            decision: PolicyDecision::RequireApproval,
+        };
+
+        let approval = agent.request_approval(&action, "needs approval".to_owned());
+
+        assert_eq!(approval.actions, vec![action.action]);
     }
 }
