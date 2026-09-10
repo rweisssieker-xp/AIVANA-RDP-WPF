@@ -203,8 +203,10 @@ fn main() -> eframe::Result<()> {
         let report = app::build_completion_audit_report_from_args(&args);
         println!(
             "{}",
-            serde_json::to_string_pretty(&app::build_next_live_gate_report(&report))
-                .expect("serialize next live gate report")
+            serde_json::to_string_pretty(&app::build_next_live_gate_report_from_args(
+                &report, &args
+            ))
+            .expect("serialize next live gate report")
         );
         return Ok(());
     }
@@ -472,8 +474,8 @@ fn main() -> eframe::Result<()> {
 
     if args.iter().any(|arg| arg == "--goal-evidence-matrix") {
         let report = app::build_completion_audit_report_from_args(&args);
-        let matrix = app::build_goal_evidence_matrix(&report);
-        let path = app::save_goal_evidence_matrix(&report).ok();
+        let matrix = app::build_goal_evidence_matrix_from_args(&report, &args);
+        let path = app::save_goal_evidence_matrix_from_args(&report, &args).ok();
         let mut json = serde_json::to_value(matrix).expect("serialize goal evidence matrix value");
         if let Some(path) = path {
             json["evidence_path"] = serde_json::Value::String(path.display().to_string());
@@ -487,8 +489,8 @@ fn main() -> eframe::Result<()> {
 
     if args.iter().any(|arg| arg == "--goal-evidence-check") {
         let report = app::build_completion_audit_report_from_args(&args);
-        let check = app::build_goal_evidence_check(&report);
-        let path = app::save_goal_evidence_check(&report).ok();
+        let check = app::build_goal_evidence_check_from_args(&report, &args);
+        let path = app::save_goal_evidence_check_from_args(&report, &args).ok();
         let ok = check
             .get("ok")
             .and_then(|value| value.as_bool())

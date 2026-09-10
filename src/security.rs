@@ -266,9 +266,10 @@ pub fn app_data_file(file: &str) -> Result<PathBuf> {
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|duration| duration.as_nanos())
                     .unwrap_or_default();
-                std::env::temp_dir()
-                    .join("Aivana")
-                    .join(format!("RustRdpClientTests-{}-{started}", std::process::id()))
+                std::env::temp_dir().join("Aivana").join(format!(
+                    "RustRdpClientTests-{}-{started}",
+                    std::process::id()
+                ))
             })
             .clone()
     };

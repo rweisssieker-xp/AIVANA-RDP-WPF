@@ -6,6 +6,14 @@ The app builds as a single Rust desktop binary with `eframe`/`egui`. There is no
 
 ## Current Capabilities
 
+- Spatial native workspace with live session thumbnails, profile-group navigation, drag-to-reorder tiles and persisted layout (`desktop-layout.json`).
+- Focus mode with session switching, fit/actual-size display, fullscreen and collapsible contextual KI/diagnostics.
+- Interrupted sessions reveal diagnostics and a selectable event timeline; disconnected previews are explicitly marked as historical and accept no remote input.
+- Local command palette (`Ctrl+K`) for navigation, profiles and active sessions. Opening a profile does not automatically connect.
+- KI tasks stop when switching to another session. The new workspace does not display synthetic quality metrics.
+
+The visual workspace combines the spatial overview, quiet focus and incident investigation concepts in `docs/gui-concepts/`. Session previews use real RDP framebuffers; saved profiles without a running session show an explicit empty state. The timeline is an event log, not video replay. Profile groups or tags named `production`, `produktion` or `prod` receive a `PRODUKTION` label. Layout restoration restores ordering and group selection, not network connections.
+
 - Native desktop shell with sidebar navigation, profiles, sessions, settings, and a live RDP viewport.
 - Connection profile list, search, editor, groups, tags, favorites, and JSON persistence.
 - Passwords are skipped from profile JSON; the credential boundary stores only `credential_id` on profiles.

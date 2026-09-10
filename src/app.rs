@@ -42,6 +42,8 @@ use crate::workspace::WorkspaceStore;
 const ACTIVE_GOAL_OBJECTIVE: &str =
     "bau das weiter aus max. usp max gui friendly max ai ki llm usage";
 
+mod desktop;
+
 mod tw {
     use eframe::egui::Color32;
 
@@ -60,7 +62,6 @@ mod tw {
     pub const BLUE_500: Color32 = Color32::from_rgb(59, 130, 246);
     pub const BLUE_600: Color32 = Color32::from_rgb(37, 99, 235);
     pub const BLUE_700: Color32 = Color32::from_rgb(29, 78, 216);
-    pub const SKY_300: Color32 = Color32::from_rgb(125, 211, 252);
     pub const RED_600: Color32 = Color32::from_rgb(220, 38, 38);
     pub const RED_700: Color32 = Color32::from_rgb(185, 28, 28);
 }
@@ -137,15 +138,19 @@ pub struct AivanaApp {
     ai_diagnosis: String,
     computer_use_status: String,
     certificate_notice: String,
-    session_inspector_open: bool,
     remote_view_mode: RemoteViewMode,
     remote_fullscreen: bool,
     autopilot: AutopilotController,
+    desktop: desktop::DesktopState,
 }
 
 impl AivanaApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
-        configure_style(&cc.egui_ctx);
+        Self::from_context(&cc.egui_ctx)
+    }
+
+    fn from_context(ctx: &Context) -> Self {
+        configure_style(ctx);
 
         let (store, profiles, status) = match ProfileStore::new() {
             Ok(store) => match store.load() {
@@ -196,7 +201,7 @@ impl AivanaApp {
             sessions: Vec::new(),
             selected_profile,
             selected_session: None,
-            view: View::Connections,
+            view: View::Sessions,
             search: String::new(),
             draft: initial_draft,
             editing_profile: selected_profile,
@@ -219,10 +224,10 @@ impl AivanaApp {
             ai_diagnosis: "Lokale KI-Diagnose wartet auf Preflight oder Sessiondaten.".to_owned(),
             computer_use_status: "Computer Use wartet auf einen Framebuffer.".to_owned(),
             certificate_notice: "Certificate Trust wartet auf einen Host.".to_owned(),
-            session_inspector_open: false,
             remote_view_mode: RemoteViewMode::Fit,
             remote_fullscreen: false,
             autopilot,
+            desktop: desktop::DesktopState::load(),
         }
     }
 
@@ -438,6 +443,7 @@ impl AivanaApp {
 
         match self.engine.connect(&profile) {
             Ok(session) => {
+                self.autopilot.abort();
                 self.timeline.append_event(
                     session.id,
                     profile.workspace_id,
@@ -451,6 +457,7 @@ impl AivanaApp {
                 );
                 self.selected_session = Some(session.id);
                 self.sessions.push(session);
+                self.desktop.focus = true;
                 self.view = View::Sessions;
                 self.status = if report.connect_recommended {
                     format!("Connecting to {}", profile.name)
@@ -587,6 +594,7 @@ impl AivanaApp {
         };
 
         if self.engine.disconnect(session_id).is_ok() {
+            self.autopilot.abort();
             self.sessions.retain(|session| session.id != session_id);
             self.textures.remove(&session_id);
             self.latest_frames.remove(&session_id);
@@ -988,13 +996,24 @@ impl eframe::App for AivanaApp {
                 let (kind, message) = timeline_message(&event);
                 self.timeline
                     .append_event(session.id, None, kind, message.clone());
+                if Some(session.id) == self.selected_session
+                    && matches!(
+                        event,
+                        EngineEvent::Error { .. } | EngineEvent::Disconnected { .. }
+                    )
+                {
+                    self.desktop.assistant = true;
+                    self.desktop.timeline = true;
+                }
                 if matches!(
                     event,
                     EngineEvent::Error { .. }
                         | EngineEvent::Disconnected { .. }
                         | EngineEvent::Diagnostic { .. }
                 ) {
-                    self.ai_diagnosis = message;
+                    if Some(session.id) == self.selected_session {
+                        self.ai_diagnosis = message;
+                    }
                 }
             }
             if let Some(frame) = self.engine.poll_frame(session.id) {
@@ -1021,113 +1040,7 @@ impl eframe::App for AivanaApp {
 
         self.process_autopilot();
 
-        let root = ui.max_rect();
-        ui.painter()
-            .rect_filled(root, CornerRadius::ZERO, tw::SLATE_100);
-
-        let compact_shell = root.width() < 920.0;
-        let top_height = if compact_shell { 42.0 } else { 46.0 };
-        let nav_width = if compact_shell { 0.0 } else { 188.0 };
-        let nav_height = if compact_shell { 44.0 } else { 0.0 };
-        let top_rect = Rect::from_min_max(root.min, pos2(root.max.x, root.min.y + top_height));
-        let nav_rect = if compact_shell {
-            Rect::from_min_max(
-                pos2(root.min.x, top_rect.max.y),
-                pos2(root.max.x, top_rect.max.y + nav_height),
-            )
-        } else {
-            Rect::from_min_max(
-                pos2(root.min.x, top_rect.max.y),
-                pos2(root.min.x + nav_width, root.max.y),
-            )
-        };
-        let content_rect = if compact_shell {
-            Rect::from_min_max(pos2(root.min.x, nav_rect.max.y), root.max)
-        } else {
-            Rect::from_min_max(pos2(nav_rect.max.x, top_rect.max.y), root.max)
-        };
-
-        let mut top_ui = ui.new_child(
-            UiBuilder::new()
-                .max_rect(top_rect)
-                .layout(Layout::left_to_right(Align::Center)),
-        );
-        Frame::NONE
-            .fill(tw::SLATE_950)
-            .inner_margin(Margin::symmetric(16, 0))
-            .show(&mut top_ui, |ui| {
-                ui.set_min_height(top_height);
-                ui.label(
-                    RichText::new("Aivana")
-                        .font(FontId::proportional(22.0))
-                        .color(Color32::WHITE),
-                );
-                ui.label(
-                    RichText::new("Rust RDP Client")
-                        .font(FontId::proportional(13.0))
-                        .color(tw::SLATE_300),
-                );
-                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                    ui.label(
-                        RichText::new(&self.status)
-                            .font(FontId::proportional(12.0))
-                            .color(tw::SKY_300),
-                    );
-                });
-            });
-
-        let mut nav_ui = ui.new_child(UiBuilder::new().max_rect(nav_rect).layout(
-            if compact_shell {
-                Layout::left_to_right(Align::Center)
-            } else {
-                Layout::top_down(Align::Min)
-            },
-        ));
-        Frame::NONE
-            .fill(tw::SLATE_900)
-            .inner_margin(if compact_shell {
-                Margin::symmetric(8, 6)
-            } else {
-                Margin::symmetric(10, 12)
-            })
-            .show(&mut nav_ui, |ui| {
-                if !compact_shell {
-                    ui.set_min_width(nav_width - 20.0);
-                }
-                nav_button(ui, &mut self.view, View::Connections, "Connections");
-                nav_button(ui, &mut self.view, View::Sessions, "Sessions");
-                nav_button(ui, &mut self.view, View::Approvals, "Approvals");
-                nav_button(ui, &mut self.view, View::Workspaces, "Workspaces");
-                nav_button(ui, &mut self.view, View::Settings, "Settings");
-            });
-
-        let mut content_ui = ui.new_child(
-            UiBuilder::new()
-                .max_rect(content_rect)
-                .layout(Layout::top_down(Align::Min)),
-        );
-        Frame::NONE
-            .fill(tw::SLATE_100)
-            .inner_margin(if self.view == View::Sessions {
-                Margin::same(10)
-            } else {
-                Margin::same(24)
-            })
-            .show(&mut content_ui, |ui| {
-                if self.view == View::Sessions {
-                    self.sessions_view(ui);
-                } else {
-                    ScrollArea::vertical()
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| match self.view {
-                            View::Connections => self.connections_view(ui),
-                            View::Sessions => unreachable!("sessions are rendered without scroll"),
-                            View::Approvals => self.approvals_view(ui),
-                            View::Workspaces => self.workspaces_view(ui),
-                            View::Settings => self.settings_view(ui),
-                        });
-                }
-            });
+        self.desktop_shell(ui);
 
         if received_frame {
             ctx.request_repaint();
@@ -1305,327 +1218,6 @@ impl AivanaApp {
                 self.save_draft();
             }
         });
-    }
-
-    fn sessions_view(&mut self, ui: &mut Ui) {
-        self.session_command_bar(ui);
-
-        let available_width = ui.available_width();
-        if available_width < 760.0 {
-            self.session_tabs(ui);
-            ui.add_space(6.0);
-            self.session_workspace(ui);
-            return;
-        }
-
-        ui.horizontal_top(|ui| {
-            ui.scope(|ui| {
-                ui.set_width((available_width * 0.15).clamp(190.0, 245.0));
-                self.session_list_panel(ui);
-            });
-
-            ui.add_space(4.0);
-            ui.scope(|ui| {
-                let inspector_width = if self.session_inspector_open {
-                    (available_width * 0.22).clamp(260.0, 360.0)
-                } else {
-                    0.0
-                };
-                ui.set_width((ui.available_width() - inspector_width - 6.0).max(360.0));
-                self.session_workspace(ui);
-            });
-
-            if self.session_inspector_open {
-                ui.add_space(4.0);
-                ui.scope(|ui| {
-                    ui.set_width((available_width * 0.22).clamp(260.0, 360.0));
-                    self.session_inspector(ui);
-                });
-            }
-        });
-    }
-
-    fn session_command_bar(&mut self, ui: &mut Ui) {
-        Frame::new()
-            .fill(tw::WHITE)
-            .stroke(Stroke::new(1.0, tw::SLATE_200))
-            .corner_radius(CornerRadius::same(6))
-            .inner_margin(Margin::symmetric(8, 6))
-            .show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(
-                        RichText::new("Remote")
-                            .size(16.0)
-                            .strong()
-                            .color(tw::SLATE_900),
-                    );
-                    if ui.button("Disconnect").clicked() {
-                        self.disconnect_selected_session();
-                    }
-                    if ui.button("Reconnect").clicked() {
-                        self.reconnect_selected_session();
-                    }
-                    if ui
-                        .selectable_label(self.session_inspector_open, "Inspector")
-                        .clicked()
-                    {
-                        self.session_inspector_open = !self.session_inspector_open;
-                    }
-                    ui.label(
-                        RichText::new(format!("{} running", self.sessions.len()))
-                            .size(12.0)
-                            .color(tw::SLATE_600),
-                    );
-                });
-            });
-        ui.add_space(6.0);
-    }
-
-    fn session_tabs(&mut self, ui: &mut Ui) {
-        self.session_tabs_with_fill(ui, tw::WHITE, tw::SLATE_200, false);
-    }
-
-    fn workspace_session_tabs(&mut self, ui: &mut Ui) {
-        self.session_tabs_with_fill(ui, tw::SLATE_900, tw::SLATE_800, true);
-    }
-
-    fn session_tabs_with_fill(&mut self, ui: &mut Ui, fill: Color32, stroke: Color32, dark: bool) {
-        Frame::new()
-            .fill(fill)
-            .stroke(Stroke::new(1.0, stroke))
-            .corner_radius(CornerRadius::same(6))
-            .inner_margin(Margin::symmetric(8, 6))
-            .show(ui, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    let ids = self
-                        .sessions
-                        .iter()
-                        .map(|session| session.id)
-                        .collect::<Vec<_>>();
-                    for id in ids {
-                        let session = self
-                            .sessions
-                            .iter()
-                            .find(|session| session.id == id)
-                            .expect("session id must exist");
-                        let selected = self.selected_session == Some(session.id);
-                        let fill = if selected {
-                            tw::BLUE_600
-                        } else if dark {
-                            tw::SLATE_800
-                        } else {
-                            tw::SLATE_50
-                        };
-                        let text = if selected || dark {
-                            tw::WHITE
-                        } else {
-                            tw::SLATE_800
-                        };
-                        let response = ui.add(
-                            egui::Button::new(
-                                RichText::new(format!(
-                                    "{}  {}",
-                                    session.title,
-                                    session.status.label()
-                                ))
-                                .size(12.0)
-                                .color(text),
-                            )
-                            .fill(fill)
-                            .stroke(Stroke::new(
-                                1.0,
-                                if selected { tw::BLUE_700 } else { stroke },
-                            )),
-                        );
-                        if response.clicked() {
-                            self.selected_session = Some(session.id);
-                            self.remote_view_mode = RemoteViewMode::Fit;
-                        }
-                    }
-                });
-            });
-    }
-
-    fn session_list_panel(&mut self, ui: &mut Ui) {
-        Frame::new()
-            .fill(tw::WHITE)
-            .stroke(Stroke::new(1.0, tw::SLATE_200))
-            .corner_radius(CornerRadius::same(6))
-            .inner_margin(Margin::same(10))
-            .show(ui, |ui| {
-                ui.set_min_height(ui.available_height().clamp(220.0, 900.0));
-                ui.label(
-                    RichText::new("Sessions")
-                        .size(15.0)
-                        .strong()
-                        .color(tw::SLATE_700),
-                );
-                ui.add_space(6.0);
-                let ids = self
-                    .sessions
-                    .iter()
-                    .map(|session| session.id)
-                    .collect::<Vec<_>>();
-                for id in ids {
-                    let session = self
-                        .sessions
-                        .iter()
-                        .find(|session| session.id == id)
-                        .expect("session id must exist");
-                    let selected = self.selected_session == Some(session.id);
-                    if ui
-                        .selectable_label(
-                            selected,
-                            format!("{}  {}", session.title, session.status.label()),
-                        )
-                        .clicked()
-                    {
-                        self.selected_session = Some(session.id);
-                        self.remote_view_mode = RemoteViewMode::Fit;
-                    }
-                }
-            });
-    }
-
-    fn session_workspace(&mut self, ui: &mut Ui) {
-        Frame::new()
-            .fill(tw::SLATE_950)
-            .stroke(Stroke::new(1.0, tw::SLATE_200))
-            .corner_radius(CornerRadius::same(6))
-            .inner_margin(Margin::same(6))
-            .show(ui, |ui| {
-                ui.set_min_height(ui.available_height().clamp(320.0, 1200.0));
-                if let Some(session) = self.selected_session().cloned() {
-                    let session_id = session.id;
-                    self.workspace_session_tabs(ui);
-                    ui.add_space(6.0);
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new(&session.title)
-                                .size(14.0)
-                                .strong()
-                                .color(tw::WHITE),
-                        );
-                        ui.add_space(8.0);
-                        ui.label(
-                            RichText::new(session.status.label())
-                                .size(12.0)
-                                .strong()
-                                .color(match session.status {
-                                    SessionStatus::Connected => tw::SKY_300,
-                                    SessionStatus::Failed | SessionStatus::Disconnected => {
-                                        tw::RED_700
-                                    }
-                                    _ => tw::SLATE_300,
-                                }),
-                        );
-                        ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui
-                                .selectable_label(self.remote_fullscreen, "Fullscreen")
-                                .clicked()
-                            {
-                                self.remote_fullscreen = !self.remote_fullscreen;
-                                ui.ctx()
-                                    .send_viewport_cmd(egui::ViewportCommand::Fullscreen(
-                                        self.remote_fullscreen,
-                                    ));
-                            }
-                            if ui
-                                .selectable_label(
-                                    self.remote_view_mode == RemoteViewMode::ActualSize,
-                                    "100%",
-                                )
-                                .clicked()
-                            {
-                                self.remote_view_mode = RemoteViewMode::ActualSize;
-                            }
-                            if ui
-                                .selectable_label(
-                                    self.remote_view_mode == RemoteViewMode::Fit,
-                                    "Fit",
-                                )
-                                .clicked()
-                            {
-                                self.remote_view_mode = RemoteViewMode::Fit;
-                            }
-                            ui.separator();
-                            ui.label(
-                                RichText::new(format!(
-                                    "{}%  {:.0}ms  {:.0}fps",
-                                    session.metrics.quality_score,
-                                    session.metrics.latency_ms,
-                                    session.metrics.frame_rate
-                                ))
-                                .size(12.0)
-                                .color(tw::SLATE_300),
-                            );
-                        });
-                    });
-                    if let Some(error) = &session.last_error {
-                        ui.colored_label(tw::RED_700, error);
-                    }
-                    ui.add_space(6.0);
-                    self.remote_canvas(ui, session_id);
-                } else {
-                    ui.heading("No session selected");
-                    ui.label("Connect to a profile to start a remote desktop session.");
-                }
-            });
-    }
-
-    fn session_inspector(&mut self, ui: &mut Ui) {
-        Frame::new()
-            .fill(tw::WHITE)
-            .stroke(Stroke::new(1.0, tw::SLATE_200))
-            .corner_radius(CornerRadius::same(6))
-            .inner_margin(Margin::same(10))
-            .show(ui, |ui| {
-                ui.set_min_height(ui.available_height().clamp(320.0, 1200.0));
-                ui.label(
-                    RichText::new("Inspector")
-                        .size(15.0)
-                        .strong()
-                        .color(tw::SLATE_800),
-                );
-                ui.add_space(8.0);
-                if let Some(session) = self.selected_session() {
-                    metric(ui, "Status", session.status.label().to_owned());
-                    metric(ui, "Canvas", self.canvas_status(session.id));
-                    metric(ui, "Profile", session.profile_id.to_string());
-                    metric(
-                        ui,
-                        "Connected",
-                        session.connected_at.format("%Y-%m-%d %H:%M:%S").to_string(),
-                    );
-                    metric(ui, "Quality", format!("{}%", session.metrics.quality_score));
-                    metric(
-                        ui,
-                        "Latency",
-                        format!("{:.0} ms", session.metrics.latency_ms),
-                    );
-                    metric(
-                        ui,
-                        "Frame rate",
-                        format!("{:.0} fps", session.metrics.frame_rate),
-                    );
-                    metric(
-                        ui,
-                        "Bandwidth",
-                        format!("{:.0} Mbps", session.metrics.bandwidth_mbps),
-                    );
-                }
-                ui.separator();
-                ui.label(RichText::new("Diagnostics").strong().color(tw::SLATE_800));
-                ui.label(
-                    RichText::new(&self.ai_diagnosis)
-                        .size(12.0)
-                        .color(tw::SLATE_600),
-                );
-                if let Some(session_id) = self.selected_session.map(|id| id) {
-                    ui.separator();
-                    self.ai_session_panel(ui, session_id);
-                }
-            });
     }
 
     fn approvals_view(&mut self, ui: &mut Ui) {
@@ -1852,7 +1444,8 @@ impl AivanaApp {
                             .to_owned();
                     self.persist_autopilot_preferences();
                     self.view = View::Sessions;
-                    self.session_inspector_open = true;
+                    self.desktop.assistant = true;
+                    self.desktop.focus = true;
                     self.status = "Autopilot goal primed from Workspace Cockpit".to_owned();
                 }
                 if ui.button("Prime Evidence Autopilot").clicked() {
@@ -1861,7 +1454,8 @@ impl AivanaApp {
                             .to_owned();
                     self.persist_autopilot_preferences();
                     self.view = View::Sessions;
-                    self.session_inspector_open = true;
+                    self.desktop.assistant = true;
+                    self.desktop.focus = true;
                     self.status = "Evidence autopilot goal primed".to_owned();
                 }
                 if ui.button("Copy LLM Handoff").clicked() {
@@ -2965,10 +2559,14 @@ impl AivanaApp {
     }
 
     fn remote_canvas(&mut self, ui: &mut Ui, session_id: Uuid) {
-        let width = ui.available_width().max(280.0);
-        let height = ui.available_height().clamp(260.0, 1400.0);
+        let width = ui.available_width().max(1.0);
+        let height = ui.available_height().max(1.0);
         let desired_size = Vec2::new(width, height);
         let (rect, response) = ui.allocate_exact_size(desired_size, Sense::click_and_drag());
+        if response.clicked() && ui.is_enabled() {
+            response.request_focus();
+        }
+        let input_enabled = ui.is_enabled() && !self.desktop.palette;
         let painter = ui.painter_at(rect);
         painter.rect(
             rect,
@@ -2982,11 +2580,9 @@ impl AivanaApp {
             self.textures.get(&session_id),
             self.latest_frames.get(&session_id),
         ) {
-            let image_rect = remote_image_rect(
-                rect.shrink(2.0),
-                Vec2::new(f32::from(frame.width), f32::from(frame.height)),
-                self.remote_view_mode,
-            );
+            let source = remote_frame_source(frame);
+            let image_rect =
+                remote_image_rect(rect.shrink(2.0), source.size(), self.remote_view_mode);
             let _ = self.engine.resize(
                 session_id,
                 image_rect.width().round().clamp(320.0, 3840.0) as u16,
@@ -2995,7 +2591,7 @@ impl AivanaApp {
             painter.image(
                 texture.id(),
                 image_rect,
-                Rect::from_min_max(Pos2::ZERO, Pos2::new(1.0, 1.0)),
+                source.uv_rect(frame),
                 Color32::WHITE,
             );
             painter.text(
@@ -3009,10 +2605,10 @@ impl AivanaApp {
                 tw::SLATE_300,
             );
 
-            if response.hovered() {
+            if input_enabled && response.hovered() {
                 if let Some(pointer_pos) = ui.ctx().pointer_latest_pos() {
                     if image_rect.contains(pointer_pos) {
-                        let (x, y) = viewport_to_remote(pointer_pos, image_rect, frame);
+                        let (x, y) = viewport_to_remote(pointer_pos, image_rect, source, frame);
                         let _ = self
                             .engine
                             .send_input(session_id, InputAction::MovePointer { x, y });
@@ -3020,9 +2616,9 @@ impl AivanaApp {
                 }
             }
 
-            if response.clicked_by(egui::PointerButton::Primary) {
+            if input_enabled && response.clicked_by(egui::PointerButton::Primary) {
                 if let Some(pos) = response.interact_pointer_pos() {
-                    let (x, y) = viewport_to_remote(pos, image_rect, frame);
+                    let (x, y) = viewport_to_remote(pos, image_rect, source, frame);
                     let _ = self.engine.send_input(
                         session_id,
                         InputAction::Click {
@@ -3033,9 +2629,9 @@ impl AivanaApp {
                     );
                 }
             }
-            if response.clicked_by(egui::PointerButton::Secondary) {
+            if input_enabled && response.clicked_by(egui::PointerButton::Secondary) {
                 if let Some(pos) = response.interact_pointer_pos() {
-                    let (x, y) = viewport_to_remote(pos, image_rect, frame);
+                    let (x, y) = viewport_to_remote(pos, image_rect, source, frame);
                     let _ = self.engine.send_input(
                         session_id,
                         InputAction::Click {
@@ -3048,9 +2644,9 @@ impl AivanaApp {
             }
 
             let scroll_delta = ui.input(|input| input.smooth_scroll_delta.y);
-            if response.hovered() && scroll_delta.abs() > f32::EPSILON {
+            if input_enabled && response.hovered() && scroll_delta.abs() > f32::EPSILON {
                 if let Some(pos) = ui.ctx().pointer_latest_pos() {
-                    let (x, y) = viewport_to_remote(pos, image_rect, frame);
+                    let (x, y) = viewport_to_remote(pos, image_rect, source, frame);
                     let _ = self.engine.send_input(
                         session_id,
                         InputAction::Scroll {
@@ -3073,7 +2669,7 @@ impl AivanaApp {
                     .collect::<Vec<_>>()
                     .join("")
             });
-            if response.has_focus() && !typed.is_empty() {
+            if input_enabled && response.has_focus() && !typed.is_empty() {
                 let _ = self
                     .engine
                     .send_input(session_id, InputAction::TypeText { text: typed });
@@ -3093,7 +2689,7 @@ impl AivanaApp {
                     })
                     .collect::<Vec<_>>()
             });
-            if response.has_focus() {
+            if input_enabled && response.has_focus() {
                 for keys in hotkeys {
                     let _ = self
                         .engine
@@ -3130,6 +2726,25 @@ impl AivanaApp {
 }
 
 fn configure_style(ctx: &Context) {
+    // Use the platform UI face when available; egui's bundled fonts remain the fallback.
+    #[cfg(windows)]
+    if let Some(windows_dir) = std::env::var_os("WINDIR") {
+        if let Ok(bytes) =
+            std::fs::read(std::path::PathBuf::from(windows_dir).join("Fonts/segoeui.ttf"))
+        {
+            let mut fonts = egui::FontDefinitions::default();
+            fonts.font_data.insert(
+                "aivana-ui".to_owned(),
+                egui::FontData::from_owned(bytes).into(),
+            );
+            fonts
+                .families
+                .entry(FontFamily::Proportional)
+                .or_default()
+                .insert(0, "aivana-ui".to_owned());
+            ctx.set_fonts(fonts);
+        }
+    }
     let mut style = (*ctx.global_style()).clone();
     style.visuals = egui::Visuals::light();
     style.visuals.widgets.inactive.corner_radius = CornerRadius::same(6);
@@ -3158,14 +2773,14 @@ fn configure_style(ctx: &Context) {
         .insert(TextStyle::Body, FontId::new(17.0, FontFamily::Proportional));
     style.text_styles.insert(
         TextStyle::Button,
-        FontId::new(16.0, FontFamily::Proportional),
+        FontId::new(14.0, FontFamily::Proportional),
     );
     style.text_styles.insert(
         TextStyle::Small,
-        FontId::new(14.0, FontFamily::Proportional),
+        FontId::new(12.0, FontFamily::Proportional),
     );
     style.spacing.item_spacing = Vec2::new(10.0, 8.0);
-    style.spacing.button_padding = Vec2::new(14.0, 9.0);
+    style.spacing.button_padding = Vec2::new(10.0, 7.0);
     ctx.set_global_style(style);
 }
 
@@ -3189,32 +2804,6 @@ fn action_button(ui: &mut Ui, label: &str, width: f32, tone: ActionTone) -> egui
             .fill(fill)
             .stroke(Stroke::new(1.0, stroke)),
     )
-}
-
-fn nav_button(ui: &mut Ui, view: &mut View, target: View, label: &str) {
-    let selected = *view == target;
-    let compact = ui.available_width() > 360.0 && ui.available_height() < 64.0;
-    let width = if compact {
-        (ui.available_width() / 5.4).clamp(82.0, 150.0)
-    } else {
-        ui.available_width().max(120.0)
-    };
-    let response = ui.add_sized(
-        [width, if compact { 30.0 } else { 38.0 }],
-        egui::Button::new(RichText::new(label).color(if selected {
-            tw::WHITE
-        } else {
-            tw::SLATE_300
-        }))
-        .fill(if selected {
-            tw::BLUE_600
-        } else {
-            tw::SLATE_800
-        }),
-    );
-    if response.clicked() {
-        *view = target;
-    }
 }
 
 fn page_header(ui: &mut Ui, title: &str, subtitle: &str) {
@@ -3302,11 +2891,120 @@ fn remote_image_rect(bounds: Rect, image_size: Vec2, mode: RemoteViewMode) -> Re
     }
 }
 
-fn viewport_to_remote(pos: Pos2, image_rect: Rect, frame: &FrameUpdate) -> (u16, u16) {
-    let x = ((pos.x - image_rect.left()) / image_rect.width() * f32::from(frame.width))
-        .clamp(0.0, f32::from(frame.width.saturating_sub(1))) as u16;
-    let y = ((pos.y - image_rect.top()) / image_rect.height() * f32::from(frame.height))
-        .clamp(0.0, f32::from(frame.height.saturating_sub(1))) as u16;
+#[derive(Clone, Copy)]
+struct RemoteFrameSource {
+    left: u16,
+    top: u16,
+    right: u16,
+    bottom: u16,
+}
+
+impl RemoteFrameSource {
+    fn full(frame: &FrameUpdate) -> Self {
+        Self {
+            left: 0,
+            top: 0,
+            right: frame.width.max(1),
+            bottom: frame.height.max(1),
+        }
+    }
+
+    fn size(self) -> Vec2 {
+        Vec2::new(
+            f32::from(self.right.saturating_sub(self.left).max(1)),
+            f32::from(self.bottom.saturating_sub(self.top).max(1)),
+        )
+    }
+
+    fn uv_rect(self, frame: &FrameUpdate) -> Rect {
+        Rect::from_min_max(
+            pos2(
+                f32::from(self.left) / f32::from(frame.width.max(1)),
+                f32::from(self.top) / f32::from(frame.height.max(1)),
+            ),
+            pos2(
+                f32::from(self.right) / f32::from(frame.width.max(1)),
+                f32::from(self.bottom) / f32::from(frame.height.max(1)),
+            ),
+        )
+    }
+}
+
+fn remote_frame_source(frame: &FrameUpdate) -> RemoteFrameSource {
+    visible_content_source(frame).unwrap_or_else(|| RemoteFrameSource::full(frame))
+}
+
+fn visible_content_source(frame: &FrameUpdate) -> Option<RemoteFrameSource> {
+    let width = usize::from(frame.width);
+    let height = usize::from(frame.height);
+    let expected_len = width.checked_mul(height)?.checked_mul(4)?;
+    if width == 0 || height == 0 || frame.pixels_rgba.len() < expected_len {
+        return None;
+    }
+
+    let mut min_x = width;
+    let mut min_y = height;
+    let mut max_x = 0usize;
+    let mut max_y = 0usize;
+    let mut non_empty_pixels = 0usize;
+
+    for y in 0..height {
+        for x in 0..width {
+            let offset = (y * width + x) * 4;
+            let r = frame.pixels_rgba[offset];
+            let g = frame.pixels_rgba[offset + 1];
+            let b = frame.pixels_rgba[offset + 2];
+            if r.max(g).max(b) > 18 {
+                min_x = min_x.min(x);
+                min_y = min_y.min(y);
+                max_x = max_x.max(x);
+                max_y = max_y.max(y);
+                non_empty_pixels += 1;
+            }
+        }
+    }
+
+    if non_empty_pixels == 0 {
+        return None;
+    }
+
+    let margin = 6usize;
+    min_x = min_x.saturating_sub(margin);
+    min_y = min_y.saturating_sub(margin);
+    max_x = (max_x + margin).min(width.saturating_sub(1));
+    max_y = (max_y + margin).min(height.saturating_sub(1));
+
+    let bbox_width = max_x.saturating_sub(min_x) + 1;
+    let bbox_height = max_y.saturating_sub(min_y) + 1;
+    let bbox_area = bbox_width.saturating_mul(bbox_height);
+    let frame_area = width.saturating_mul(height).max(1);
+    let bbox_ratio = bbox_area as f32 / frame_area as f32;
+    let non_empty_ratio = non_empty_pixels as f32 / frame_area as f32;
+
+    if bbox_width < 80 || bbox_height < 80 || bbox_ratio > 0.82 || non_empty_ratio < 0.002 {
+        return None;
+    }
+
+    Some(RemoteFrameSource {
+        left: min_x as u16,
+        top: min_y as u16,
+        right: (max_x + 1) as u16,
+        bottom: (max_y + 1) as u16,
+    })
+}
+
+fn viewport_to_remote(
+    pos: Pos2,
+    image_rect: Rect,
+    source: RemoteFrameSource,
+    frame: &FrameUpdate,
+) -> (u16, u16) {
+    let x =
+        f32::from(source.left) + (pos.x - image_rect.left()) / image_rect.width() * source.size().x;
+    let y =
+        f32::from(source.top) + (pos.y - image_rect.top()) / image_rect.height() * source.size().y;
+    let x = x.clamp(0.0, f32::from(frame.width.saturating_sub(1))) as u16;
+    let y = y.clamp(0.0, f32::from(frame.height.saturating_sub(1))) as u16;
     (x, y)
 }
 
@@ -3543,6 +3241,19 @@ fn missing_required_rdp_test_env() -> Vec<String> {
         }
         Err(_) => true,
     })
+}
+
+fn missing_required_rdp_test_env_from_args(args: &[String]) -> Vec<String> {
+    if crate::ironrdp_client::rdp_env_file_path_from_args(args).is_some() {
+        let env_file_check = crate::ironrdp_client::rdp_env_file_check_report_from_args(
+            args,
+            crate::ironrdp_client::rdp_smoke_timeout_secs_from_args(args),
+        );
+        if env_file_check.ok {
+            return Vec::new();
+        }
+    }
+    missing_required_rdp_test_env()
 }
 
 fn missing_required_rdp_test_env_from_lookup(
@@ -3869,6 +3580,23 @@ pub struct LiveGateDoctorEvidence {
 }
 
 pub fn build_next_live_gate_report(report: &CompletionAuditReport) -> NextLiveGateReport {
+    build_next_live_gate_report_with_missing_env(report, missing_required_rdp_test_env())
+}
+
+pub fn build_next_live_gate_report_from_args(
+    report: &CompletionAuditReport,
+    args: &[String],
+) -> NextLiveGateReport {
+    build_next_live_gate_report_with_missing_env(
+        report,
+        missing_required_rdp_test_env_from_args(args),
+    )
+}
+
+fn build_next_live_gate_report_with_missing_env(
+    report: &CompletionAuditReport,
+    missing_rdp_env: Vec<String>,
+) -> NextLiveGateReport {
     let blockers = report
         .items
         .iter()
@@ -3884,7 +3612,7 @@ pub fn build_next_live_gate_report(report: &CompletionAuditReport) -> NextLiveGa
         first_blocking_status: first.map(|item| redact_secret_text(&item.status)),
         first_blocking_evidence: first.map(|item| redact_secret_text(&item.evidence)),
         operator_action: first.map(|item| redact_secret_text(&item.next_action)),
-        missing_rdp_env: missing_required_rdp_test_env(),
+        missing_rdp_env,
         rdp_env_template: build_rdp_live_gate_env_template(),
         next_commands: vec![
             "cargo run -- --save-rdp-env-template .\\rdp-live.env".to_owned(),
@@ -5582,6 +5310,21 @@ pub fn build_command_index() -> serde_json::Value {
 
 pub fn build_goal_evidence_check(report: &CompletionAuditReport) -> serde_json::Value {
     let matrix = build_goal_evidence_matrix(report);
+    build_goal_evidence_check_from_matrix(report, matrix)
+}
+
+pub fn build_goal_evidence_check_from_args(
+    report: &CompletionAuditReport,
+    args: &[String],
+) -> serde_json::Value {
+    let matrix = build_goal_evidence_matrix_from_args(report, args);
+    build_goal_evidence_check_from_matrix(report, matrix)
+}
+
+fn build_goal_evidence_check_from_matrix(
+    report: &CompletionAuditReport,
+    matrix: serde_json::Value,
+) -> serde_json::Value {
     let failed_requirements = matrix
         .get("uncovered_requirements")
         .and_then(|value| value.as_array())
@@ -5601,13 +5344,20 @@ pub fn build_goal_evidence_check(report: &CompletionAuditReport) -> serde_json::
     })
 }
 
-pub fn save_goal_evidence_check(
+pub fn save_goal_evidence_check_from_args(
     report: &CompletionAuditReport,
+    args: &[String],
+) -> anyhow::Result<std::path::PathBuf> {
+    save_goal_evidence_check_with_value(report, build_goal_evidence_check_from_args(report, args))
+}
+
+fn save_goal_evidence_check_with_value(
+    report: &CompletionAuditReport,
+    check: serde_json::Value,
 ) -> anyhow::Result<std::path::PathBuf> {
     let dir = app_data_file("goal-evidence-checks")?;
     std::fs::create_dir_all(&dir)?;
     let path = dir.join(format!("{}.json", report.audit_id));
-    let check = build_goal_evidence_check(report);
     std::fs::write(&path, redacted_json_string(&check)?)?;
     Ok(path)
 }
@@ -5633,7 +5383,7 @@ fn build_operator_handoff_risk_summary_with_inputs(
     args: &[String],
 ) -> OperatorHandoffRiskSummary {
     let handoff = build_operator_handoff_pack_check();
-    let goal_check = build_goal_evidence_check(&audit);
+    let goal_check = build_goal_evidence_check_from_args(&audit, args);
     let proof_check = build_rdp_proof_check_from_args(args);
     let rdp_proof_ok = proof_check
         .get("ok")
@@ -5772,7 +5522,7 @@ fn rdp_env_source_label_from_args(args: &[String]) -> String {
 pub fn build_verification_snapshot_from_args(args: &[String]) -> serde_json::Value {
     let readiness = build_ki_readiness_cli_report_from_args(args);
     let audit = build_completion_audit_report_from_args(args);
-    let next_gate = build_next_live_gate_report(&audit);
+    let next_gate = build_next_live_gate_report_from_args(&audit, args);
     let doctor = build_live_gate_doctor_report_from_args(args);
     let proof_check = build_rdp_proof_check_from_args(args);
     let handoff = build_operator_handoff_pack_check();
@@ -5986,7 +5736,7 @@ pub fn build_llm_action_contract(
     proof_check: &serde_json::Value,
     args: &[String],
 ) -> serde_json::Value {
-    let next_gate = build_next_live_gate_report(audit);
+    let next_gate = build_next_live_gate_report_from_args(audit, args);
     let rdp_proof_ok = proof_check
         .get("ok")
         .and_then(|value| value.as_bool())
@@ -6101,6 +5851,23 @@ pub fn save_llm_action_contract(
 }
 
 pub fn build_goal_evidence_matrix(report: &CompletionAuditReport) -> serde_json::Value {
+    build_goal_evidence_matrix_with_next_gate(report, build_next_live_gate_report(report))
+}
+
+pub fn build_goal_evidence_matrix_from_args(
+    report: &CompletionAuditReport,
+    args: &[String],
+) -> serde_json::Value {
+    build_goal_evidence_matrix_with_next_gate(
+        report,
+        build_next_live_gate_report_from_args(report, args),
+    )
+}
+
+fn build_goal_evidence_matrix_with_next_gate(
+    report: &CompletionAuditReport,
+    next_live_gate: NextLiveGateReport,
+) -> serde_json::Value {
     let checklist = report
         .items
         .iter()
@@ -6171,17 +5938,24 @@ pub fn build_goal_evidence_matrix(report: &CompletionAuditReport) -> serde_json:
         ],
         "checklist": checklist,
         "uncovered_requirements": uncovered_requirements,
-        "next_live_gate": build_next_live_gate_report(report)
+        "next_live_gate": next_live_gate
     })
 }
 
-pub fn save_goal_evidence_matrix(
+pub fn save_goal_evidence_matrix_from_args(
     report: &CompletionAuditReport,
+    args: &[String],
+) -> anyhow::Result<std::path::PathBuf> {
+    save_goal_evidence_matrix_with_value(report, build_goal_evidence_matrix_from_args(report, args))
+}
+
+fn save_goal_evidence_matrix_with_value(
+    report: &CompletionAuditReport,
+    matrix: serde_json::Value,
 ) -> anyhow::Result<std::path::PathBuf> {
     let dir = app_data_file("goal-evidence-matrices")?;
     std::fs::create_dir_all(&dir)?;
     let path = dir.join(format!("{}.json", report.audit_id));
-    let matrix = build_goal_evidence_matrix(report);
     std::fs::write(&path, redacted_json_string(&matrix)?)?;
     Ok(path)
 }
@@ -16833,6 +16607,39 @@ mod tests {
                 .missing_requirements
                 .iter()
                 .any(|item| item.contains("AIVANA_RDP_TEST_*") || item.contains("hunter2"))
+        );
+    }
+
+    #[test]
+    fn next_live_gate_uses_rdp_env_file_args_for_missing_env() {
+        let path =
+            std::env::temp_dir().join(format!("aivana-next-gate-rdp-{}.env", Uuid::new_v4()));
+        std::fs::write(
+            &path,
+            "AIVANA_RDP_TEST_HOST=rdp.example.local\nAIVANA_RDP_TEST_USER=operator\nAIVANA_RDP_TEST_PASSWORD=hunter2\n",
+        )
+        .expect("write env file");
+        let args = vec![
+            "aivana".to_owned(),
+            "--next-live-gate-json".to_owned(),
+            "--rdp-env-file".to_owned(),
+            path.display().to_string(),
+        ];
+
+        let audit = build_completion_audit_report_from_args(&args);
+        let next_gate = build_next_live_gate_report_from_args(&audit, &args);
+        let matrix = build_goal_evidence_matrix_from_args(&audit, &args);
+        let _ = std::fs::remove_file(path);
+
+        assert!(next_gate.missing_rdp_env.is_empty());
+        assert_eq!(
+            matrix["next_live_gate"]["missing_rdp_env"],
+            serde_json::json!([])
+        );
+        assert!(
+            !serde_json::to_string(&matrix)
+                .expect("matrix json")
+                .contains("hunter2")
         );
     }
 
